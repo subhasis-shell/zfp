@@ -6,6 +6,7 @@ _t2(compress_omp, Scalar, 1)(zfp_stream* stream, const zfp_field* field)
 {
   /* array metadata */
   const Scalar* data = (const Scalar*)field->data;
+  uint16* length_table = stream->length_table;
   uint nx = field->nx;
 
   /* number of omp threads, blocks, and chunks */
@@ -37,9 +38,15 @@ _t2(compress_omp, Scalar, 1)(zfp_stream* stream, const zfp_field* field)
       p += x;
       /* compress partial or full block */
       if (nx - x < 4)
-        _t2(zfp_encode_partial_block_strided, Scalar, 1)(&s, p, MIN(nx - x, 4u), 1);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_partial_block_strided, Scalar, 1)(&s, p, MIN(nx - x, 4u), 1);
+        else
+          _t2(zfp_encode_partial_block_strided, Scalar, 1)(&s, p, MIN(nx - x, 4u), 1);
       else
-        _t2(zfp_encode_block, Scalar, 1)(&s, p);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_block, Scalar, 1)(&s, p);
+        else
+          _t2(zfp_encode_block, Scalar, 1)(&s, p);
     }
   }
 
@@ -53,6 +60,7 @@ _t2(compress_strided_omp, Scalar, 1)(zfp_stream* stream, const zfp_field* field)
 {
   /* array metadata */
   const Scalar* data = (const Scalar*)field->data;
+  uint16* length_table = stream->length_table;
   uint nx = field->nx;
   int sx = field->sx ? field->sx : 1;
 
@@ -85,9 +93,15 @@ _t2(compress_strided_omp, Scalar, 1)(zfp_stream* stream, const zfp_field* field)
       p += sx * (ptrdiff_t)x;
       /* compress partial or full block */
       if (nx - x < 4)
-        _t2(zfp_encode_partial_block_strided, Scalar, 1)(&s, p, MIN(nx - x, 4u), sx);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_partial_block_strided, Scalar, 1)(&s, p, MIN(nx - x, 4u), sx);
+        else
+          _t2(zfp_encode_partial_block_strided, Scalar, 1)(&s, p, MIN(nx - x, 4u), sx);
       else
-        _t2(zfp_encode_block_strided, Scalar, 1)(&s, p, sx);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_block_strided, Scalar, 1)(&s, p, sx);
+        else
+          _t2(zfp_encode_block_strided, Scalar, 1)(&s, p, sx);
     }
   }
 
@@ -101,6 +115,7 @@ _t2(compress_strided_omp, Scalar, 2)(zfp_stream* stream, const zfp_field* field)
 {
   /* array metadata */
   const Scalar* data = (const Scalar*)field->data;
+  uint16* length_table = stream->length_table;
   uint nx = field->nx;
   uint ny = field->ny;
   int sx = field->sx ? field->sx : 1;
@@ -140,9 +155,15 @@ _t2(compress_strided_omp, Scalar, 2)(zfp_stream* stream, const zfp_field* field)
       p += sx * (ptrdiff_t)x + sy * (ptrdiff_t)y;
       /* compress partial or full block */
       if (nx - x < 4 || ny - y < 4)
-        _t2(zfp_encode_partial_block_strided, Scalar, 2)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), sx, sy);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_partial_block_strided, Scalar, 2)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), sx, sy);
+        else
+          _t2(zfp_encode_partial_block_strided, Scalar, 2)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), sx, sy);
       else
-        _t2(zfp_encode_block_strided, Scalar, 2)(&s, p, sx, sy);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_block_strided, Scalar, 2)(&s, p, sx, sy);
+        else
+          _t2(zfp_encode_block_strided, Scalar, 2)(&s, p, sx, sy);
     }
   }
 
@@ -156,6 +177,7 @@ _t2(compress_strided_omp, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
 {
   /* array metadata */
   const Scalar* data = (const Scalar*)field->data;
+  uint16* length_table = stream->length_table;
   uint nx = field->nx;
   uint ny = field->ny;
   uint nz = field->nz;
@@ -199,9 +221,15 @@ _t2(compress_strided_omp, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
       p += sx * (ptrdiff_t)x + sy * (ptrdiff_t)y + sz * (ptrdiff_t)z;
       /* compress partial or full block */
       if (nx - x < 4 || ny - y < 4 || nz - z < 4)
-        _t2(zfp_encode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+        else
+          _t2(zfp_encode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
       else
-        _t2(zfp_encode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
+        else
+          _t2(zfp_encode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
     }
   }
 
@@ -215,6 +243,7 @@ _t2(compress_strided_omp, Scalar, 4)(zfp_stream* stream, const zfp_field* field)
 {
   /* array metadata */
   const Scalar* data = field->data;
+  uint16* length_table = stream->length_table;
   uint nx = field->nx;
   uint ny = field->ny;
   uint nz = field->nz;
@@ -262,9 +291,15 @@ _t2(compress_strided_omp, Scalar, 4)(zfp_stream* stream, const zfp_field* field)
       p += sx * (ptrdiff_t)x + sy * (ptrdiff_t)y + sz * (ptrdiff_t)z + sw * (ptrdiff_t)w;
       /* compress partial or full block */
       if (nx - x < 4 || ny - y < 4 || nz - z < 4 || nw - w < 4)
-        _t2(zfp_encode_partial_block_strided, Scalar, 4)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), MIN(nw - w, 4u), sx, sy, sz, sw);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_partial_block_strided, Scalar, 4)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), MIN(nw - w, 4u), sx, sy, sz, sw);
+        else
+          _t2(zfp_encode_partial_block_strided, Scalar, 4)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), MIN(nw - w, 4u), sx, sy, sz, sw);
       else
-        _t2(zfp_encode_block_strided, Scalar, 4)(&s, p, sx, sy, sz, sw);
+        if (length_table)
+          length_table[block] = _t2(zfp_encode_block_strided, Scalar, 4)(&s, p, sx, sy, sz, sw);
+        else
+          _t2(zfp_encode_block_strided, Scalar, 4)(&s, p, sx, sy, sz, sw);
     }
   }
 

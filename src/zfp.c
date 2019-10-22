@@ -48,6 +48,7 @@ is_reversible(const zfp_stream* zfp)
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
 #undef Scalar
@@ -56,6 +57,7 @@ is_reversible(const zfp_stream* zfp)
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
 #undef Scalar
@@ -64,6 +66,7 @@ is_reversible(const zfp_stream* zfp)
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
 #undef Scalar
@@ -72,6 +75,7 @@ is_reversible(const zfp_stream* zfp)
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
 #undef Scalar
@@ -428,6 +432,8 @@ zfp_stream_open(bitstream* stream)
     zfp->maxprec = ZFP_MAX_PREC;
     zfp->minexp = ZFP_MIN_EXP;
     zfp->exec.policy = zfp_exec_serial;
+    zfp->length_table = NULL;
+    zfp->index = NULL;
   }
   return zfp;
 }
@@ -732,6 +738,18 @@ zfp_stream_set_params(zfp_stream* zfp, uint minbits, uint maxbits, uint maxprec,
   return 1;
 }
 
+void
+zfp_stream_set_length_table(zfp_stream* zfp, uint16* length_table)
+{
+  zfp->length_table = length_table;
+}
+
+void
+zfp_stream_set_index(zfp_stream* zfp, zfp_index* index)
+{
+  zfp->index = index;
+}
+
 size_t
 zfp_stream_flush(zfp_stream* zfp)
 {
@@ -813,6 +831,42 @@ zfp_stream_set_omp_chunk_size(zfp_stream* zfp, uint chunk_size)
     return 0;
   zfp->exec.params.omp.chunk_size = chunk_size;
   return 1;
+}
+
+/* public functions: index --------------------------------------*/
+
+zfp_index*
+index_alloc()
+{
+  zfp_index* index = (zfp_index*)malloc(sizeof(zfp_index));
+  if (index) {
+    index->type = 0;
+    index->index_granularity = 0;
+    index->data = NULL;
+  }
+  return index;
+}
+
+int
+index_set_params(zfp_index* index, index_type type, uint index_granularity)
+{
+  if (!index)
+    return 0;
+  index->type = type;
+  index->index_granularity = index_granularity;
+  return 1;
+}
+
+void
+index_set_data(zfp_index* index, void* data)
+{
+  index->data = data;
+}
+
+void
+index_free(zfp_index* index)
+{
+  free(index);
 }
 
 /* public functions: utility functions --------------------------------------*/
@@ -977,8 +1031,19 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
       { decompress_strided_int32_3, decompress_strided_int64_3, decompress_strided_float_3, decompress_strided_double_3 },
       { decompress_strided_int32_4, decompress_strided_int64_4, decompress_strided_float_4, decompress_strided_double_4 }}},
 
-    /* OpenMP; not yet supported */
-    {{{ NULL }}},
+    /* OpenMP */
+#ifdef _OPENMP
+    {{{ decompress_omp_int32_1,         decompress_omp_int64_1,         decompress_omp_float_1,         decompress_omp_double_1 },
+      { decompress_strided_omp_int32_2, decompress_strided_omp_int64_2, decompress_strided_omp_float_2, decompress_strided_omp_double_2 },
+      { decompress_strided_omp_int32_3, decompress_strided_omp_int64_3, decompress_strided_omp_float_3, decompress_strided_omp_double_3 },
+      { decompress_strided_omp_int32_4, decompress_strided_omp_int64_4, decompress_strided_omp_float_4, decompress_strided_omp_double_4 }},
+     {{ decompress_strided_omp_int32_1, decompress_strided_omp_int64_1, decompress_strided_omp_float_1, decompress_strided_omp_double_1 },
+      { decompress_strided_omp_int32_2, decompress_strided_omp_int64_2, decompress_strided_omp_float_2, decompress_strided_omp_double_2 },
+      { decompress_strided_omp_int32_3, decompress_strided_omp_int64_3, decompress_strided_omp_float_3, decompress_strided_omp_double_3 },
+      { decompress_strided_omp_int32_4, decompress_strided_omp_int64_4, decompress_strided_omp_float_4, decompress_strided_omp_double_4 }}},
+#else
+     {{{ NULL }}},
+#endif
 
     /* CUDA */
 #ifdef ZFP_WITH_CUDA
@@ -1089,4 +1154,57 @@ zfp_read_header(zfp_stream* zfp, zfp_field* field, uint mask)
       return 0;
   }
   return bits;
+}
+
+int
+index_encode(const zfp_stream* stream, const zfp_field* field)
+{
+  const index_type type = stream->index->type;
+  const uint16* length_table = stream->length_table;
+  const uint nx = MAX(field->nx, 1u);
+  const uint ny = MAX(field->ny, 1u);
+  const uint nz = MAX(field->nz, 1u);
+  const uint nw = MAX(field->nw, 1u);
+  const uint blocks = (size_t)((nx + 3)/ 4) * (size_t)((ny + 3)/ 4) * (size_t)((nz + 3)/ 4) * (size_t)((nw + 3)/ 4);
+  if (type == offset) {
+    uint index_granularity = stream->index->index_granularity;
+    uint64* offset_table = (uint64*)stream->index->data;
+    uint64 sum = 0;
+    int i, chunk, block, chunks;
+    chunks = (blocks + index_granularity - 1) / index_granularity;
+    for (chunk = 0, block = 0; chunk < chunks; chunk++) {
+      offset_table[chunk] = sum;
+      for (i = 0; i < index_granularity; i++, block++) {
+        sum += length_table[block];
+      }
+    }
+  }
+  else {
+    /* None or unknown index type */
+    return 0;
+  }
+  return 1;
+}
+
+size_t
+index_size(const zfp_stream* stream, const zfp_field* field)
+{
+  const index_type type = stream->index->type;
+  const uint nx = MAX(field->nx, 1u);
+  const uint ny = MAX(field->ny, 1u);
+  const uint nz = MAX(field->nz, 1u);
+  const uint nw = MAX(field->nw, 1u);
+  const uint blocks = (size_t)((nx + 3)/ 4) * (size_t)((ny + 3)/ 4) * (size_t)((nz + 3)/ 4) * (size_t)((nw + 3)/ 4);
+  size_t size = 0;
+  uint chunks = 0;
+  if (type == offset) {
+    uint index_granularity = stream->index->index_granularity;
+    chunks = (blocks + index_granularity - 1) / index_granularity;
+    size = chunks * sizeof(uint64);
+  }
+  else {
+    /* None or unknown index type */
+    return 0;
+  }
+  return size;
 }
