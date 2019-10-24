@@ -1,13 +1,9 @@
 #ifdef _OPENMP
 
-#include <time.h>
 /* decompress 1d contiguous array in parallel */
 static void
 _t2(decompress_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
 {
-  struct timespec start_time, end_time;
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-
   Scalar* data = (Scalar*)field->data;
   const uint nx = field->nx;
   const uint threads = thread_count_omp(stream);
@@ -63,19 +59,12 @@ _t2(decompress_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
   /* read a bit from the bitstream to prevent decompression failed
   TODO: find a better fix */
   stream_read_bit(stream->stream);
-
-  clock_gettime(CLOCK_MONOTONIC, &end_time);
-  double total_t = (double)((end_time.tv_sec * 1000000000 + end_time.tv_nsec) - (start_time.tv_sec * 1000000000 + start_time.tv_nsec)) / 1e6;
-  printf("%f", total_t);
 }
 
 /* decompress 1d strided array in parallel */
 static void
 _t2(decompress_strided_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
 {
-  struct timespec start_time, end_time;
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-
   Scalar* data = (Scalar*)field->data;
   const uint nx = field->nx;
   const int sx = field->sx ? field->sx : 1;
@@ -132,19 +121,12 @@ _t2(decompress_strided_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
   /* read a bit from the bitstream to prevent decompression failed
   TODO: find a better fix */
   stream_read_bit(stream->stream);
-
-  clock_gettime(CLOCK_MONOTONIC, &end_time);
-  double total_t = (double)((end_time.tv_sec * 1000000000 + end_time.tv_nsec) - (start_time.tv_sec * 1000000000 + start_time.tv_nsec)) / 1e6;
-  printf("%f", total_t);
 }
 
 /* decompress 2d strided array in parallel */
 static void
 _t2(decompress_strided_omp, Scalar, 2)(zfp_stream* stream, zfp_field* field)
 {
-  struct timespec start_time, end_time;
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-
   Scalar* data = (Scalar*)field->data;
   const uint nx = field->nx;
   const uint ny = field->ny;
@@ -206,19 +188,12 @@ _t2(decompress_strided_omp, Scalar, 2)(zfp_stream* stream, zfp_field* field)
   /* read a bit from the bitstream to prevent decompression failed
   TODO: find a better fix */
   stream_read_bit(stream->stream);
-
-  clock_gettime(CLOCK_MONOTONIC, &end_time);
-  double total_t = (double)((end_time.tv_sec * 1000000000 + end_time.tv_nsec) - (start_time.tv_sec * 1000000000 + start_time.tv_nsec)) / 1e6;
-  printf("%f", total_t);
 }
 
 /* decompress 3d strided array in parallel */
 static void
 _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
 {
-  struct timespec start_time, end_time;
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-
   Scalar* data = (Scalar*)field->data;
   const uint nx = field->nx;
   const uint ny = field->ny;
@@ -284,19 +259,12 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
   /* read a bit from the bitstream to prevent decompression failed
   TODO: find a better fix */
   stream_read_bit(stream->stream);
-
-  clock_gettime(CLOCK_MONOTONIC, &end_time);
-  double total_t = (double)((end_time.tv_sec * 1000000000 + end_time.tv_nsec) - (start_time.tv_sec * 1000000000 + start_time.tv_nsec)) / 1e6;
-  printf("%f", total_t);
 }
 
 /* decompress 4d strided array in parallel */
 static void
 _t2(decompress_strided_omp, Scalar, 4)(zfp_stream* stream, zfp_field* field)
 {
-  struct timespec start_time, end_time;
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-
   Scalar* data = (Scalar*)field->data;
   uint nx = field->nx;
   uint ny = field->ny;
@@ -366,10 +334,6 @@ _t2(decompress_strided_omp, Scalar, 4)(zfp_stream* stream, zfp_field* field)
   /* read a bit from the bitstream to prevent decompression failed
   TODO: find a better fix */
   stream_read_bit(stream->stream);
-
-  clock_gettime(CLOCK_MONOTONIC, &end_time);
-  double total_t = (double)((end_time.tv_sec * 1000000000 + end_time.tv_nsec) - (start_time.tv_sec * 1000000000 + start_time.tv_nsec)) / 1e6;
-  printf("%f", total_t);
 }
 
 #endif
