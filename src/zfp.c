@@ -432,7 +432,6 @@ zfp_stream_open(bitstream* stream)
     zfp->maxprec = ZFP_MAX_PREC;
     zfp->minexp = ZFP_MIN_EXP;
     zfp->exec.policy = zfp_exec_serial;
-    zfp->length_table = NULL;
     zfp->index = NULL;
   }
   return zfp;
@@ -739,15 +738,43 @@ zfp_stream_set_params(zfp_stream* zfp, uint minbits, uint maxbits, uint maxprec,
 }
 
 void
-zfp_stream_set_length_table(zfp_stream* zfp, uint16* length_table)
-{
-  zfp->length_table = length_table;
-}
-
-void
 zfp_stream_set_index(zfp_stream* zfp, zfp_index* index)
 {
   zfp->index = index;
+}
+
+zfp_index*
+zfp_index_create()
+{
+  zfp_index* index = (zfp_index*)malloc(sizeof(zfp_index));
+  if (index) {
+    index->type = zfp_index_none;
+    index->data = NULL;
+    index->size = 0;
+  }
+  return index;
+}
+
+void
+zfp_index_set_type(zfp_index* index, zfp_index_type type)
+{
+  index->type = type;
+}
+
+void
+zfp_index_set_data(zfp_index* index, void* data, size_t size)
+{
+  index->data = data;
+  index->size = size;
+}
+
+void
+zfp_index_free(zfp_index* index)
+{
+  if (index->data) {
+    free(index->data);
+  }
+  free(index);
 }
 
 size_t
@@ -831,42 +858,6 @@ zfp_stream_set_omp_chunk_size(zfp_stream* zfp, uint chunk_size)
     return 0;
   zfp->exec.params.omp.chunk_size = chunk_size;
   return 1;
-}
-
-/* public functions: index --------------------------------------*/
-
-zfp_index*
-index_alloc()
-{
-  zfp_index* index = (zfp_index*)malloc(sizeof(zfp_index));
-  if (index) {
-    index->type = 0;
-    index->index_granularity = 0;
-    index->data = NULL;
-  }
-  return index;
-}
-
-int
-index_set_params(zfp_index* index, index_type type, uint index_granularity)
-{
-  if (!index)
-    return 0;
-  index->type = type;
-  index->index_granularity = index_granularity;
-  return 1;
-}
-
-void
-index_set_data(zfp_index* index, void* data)
-{
-  index->data = data;
-}
-
-void
-index_free(zfp_index* index)
-{
-  free(index);
 }
 
 /* public functions: utility functions --------------------------------------*/
@@ -993,6 +984,12 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
   uint dims = zfp_field_dimensionality(field);
   uint type = field->type;
   void (*compress)(zfp_stream*, const zfp_field*);
+  size_t blocks;
+  size_t index_size = 0;
+  void* index_data = NULL;
+  void*  = NULL;
+  zfp_index_type idx_type = zfp_index_none;
+  int i;
 
   switch (type) {
     case zfp_type_int32:
@@ -1004,15 +1001,70 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
       return 0;
   }
 
+  /* allocate buffer for length table */
+  if (zfp->index != NULL) {
+    idx_type = zfp->index->type;
+    uint mx = (MAX(field->nx, 1u) + 3) / 4;
+    uint my = (MAX(field->ny, 1u) + 3) / 4;
+    uint mz = (MAX(field->nz, 1u) + 3) / 4;
+    uint mw = (MAX(field->nw, 1u) + 3) / 4;
+    blocks = (size_t)mx * (size_t)my * (size_t)mz * (size_t)mw;
+    index_size = blocks * sizeof(uint16);
+    length_table = malloc(index_size);
+    zfp_index_set_data(zfp->index, length_table, index_size);
+  }
+
   /* return 0 if compression mode is not supported */
   compress = ftable[exec][strided][dims - 1][type - zfp_type_int32];
-  if (!compress)
+  if (!compress) {
     return 0;
+  }
 
   /* compress field and align bit stream on word boundary */
   compress(zfp, field);
   stream_flush(zfp->stream);
 
+  /* encode index - calling a separate encoding function might be better */
+  if (zfp->index != NULL) {
+    uint16* index16 = NULL;
+    uint64* index64 = NULL;
+    uint16* length16 = (uint16*) length_table;
+    switch (idx_type) {
+      /* convert from length table to length index with header */
+      case zfp_index_length: 
+        index_size = sizeof(uint64) + blocks * sizeof(uint16); // add size for header
+        index_data = malloc(index_size);
+        index64 = (uint64*)index_data;
+        index16 = (uint16*)index_data;
+        index64[0] = 2; // encode the header to indicate lengths
+        for (i=0; i < blocks; i++) {
+          index16[i+4] = length16[i]; // copy data from length table to index data
+        }
+        break;
+      /* default option is offset table, fallthrough to offset */
+      case zfp_index_none:
+      /* convert from length table to offset index with header */
+      case zfp_index_offset: 
+        index_size = (blocks + 1) * sizeof(uint64);
+        index_data = malloc(index_size);
+        index64 = (uint64*)index_data;
+        index64[0] = 1; // encode the header to indicate offsets
+        uint64 sum = 0;
+        for (i = 0; i < blocks; i++) {
+          index64[i+1] = sum;
+          sum += (uint64)length16[i];
+        }
+        break;
+      /* unrecognized type, return no index data */
+      default: 
+        index_data = NULL;
+        index_size = 0;
+        break;
+    }
+    /* set the encoded index size and data in the stream */
+    zfp_index_set_data(zfp->index, index_data, index_size); 
+    free(length_table);
+  }
   return stream_size(zfp->stream);
 }
 
@@ -1154,57 +1206,4 @@ zfp_read_header(zfp_stream* zfp, zfp_field* field, uint mask)
       return 0;
   }
   return bits;
-}
-
-int
-index_encode(const zfp_stream* stream, const zfp_field* field)
-{
-  const index_type type = stream->index->type;
-  const uint16* length_table = stream->length_table;
-  const uint nx = MAX(field->nx, 1u);
-  const uint ny = MAX(field->ny, 1u);
-  const uint nz = MAX(field->nz, 1u);
-  const uint nw = MAX(field->nw, 1u);
-  const uint blocks = (size_t)((nx + 3)/ 4) * (size_t)((ny + 3)/ 4) * (size_t)((nz + 3)/ 4) * (size_t)((nw + 3)/ 4);
-  if (type == offset) {
-    uint index_granularity = stream->index->index_granularity;
-    uint64* offset_table = (uint64*)stream->index->data;
-    uint64 sum = 0;
-    int i, chunk, block, chunks;
-    chunks = (blocks + index_granularity - 1) / index_granularity;
-    for (chunk = 0, block = 0; chunk < chunks; chunk++) {
-      offset_table[chunk] = sum;
-      for (i = 0; i < index_granularity; i++, block++) {
-        sum += length_table[block];
-      }
-    }
-  }
-  else {
-    /* None or unknown index type */
-    return 0;
-  }
-  return 1;
-}
-
-size_t
-index_size(const zfp_stream* stream, const zfp_field* field)
-{
-  const index_type type = stream->index->type;
-  const uint nx = MAX(field->nx, 1u);
-  const uint ny = MAX(field->ny, 1u);
-  const uint nz = MAX(field->nz, 1u);
-  const uint nw = MAX(field->nw, 1u);
-  const uint blocks = (size_t)((nx + 3)/ 4) * (size_t)((ny + 3)/ 4) * (size_t)((nz + 3)/ 4) * (size_t)((nw + 3)/ 4);
-  size_t size = 0;
-  uint chunks = 0;
-  if (type == offset) {
-    uint index_granularity = stream->index->index_granularity;
-    chunks = (blocks + index_granularity - 1) / index_granularity;
-    size = chunks * sizeof(uint64);
-  }
-  else {
-    /* None or unknown index type */
-    return 0;
-  }
-  return size;
 }

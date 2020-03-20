@@ -9,7 +9,10 @@ _t2(compress, Scalar, 1)(zfp_stream* stream, const zfp_field* field)
   
   /* set up the optional lengths table */
   uint16 block_length;
-  uint16* length_table = stream->length_table;
+  uint16* length_table = NULL;
+  if (stream->index){
+    length_table = (uint16*)stream->index->data;
+  }
 
   /* compress array one block of 4 values at a time */
   for (x = 0; x < mx; x += 4, data += 4) {
@@ -35,7 +38,10 @@ _t2(compress_strided, Scalar, 1)(zfp_stream* stream, const zfp_field* field)
 
   /* set up the optional lengths table */
   uint16 block_length;
-  uint16* length_table = stream->length_table;
+  uint16* length_table = NULL;
+  if (stream->index){
+    length_table = (uint16*)stream->index->data;
+  }
 
   /* compress array one block of 4 values at a time */
   for (x = 0; x < nx; x += 4) {
@@ -66,7 +72,10 @@ _t2(compress_strided, Scalar, 2)(zfp_stream* stream, const zfp_field* field)
 
   /* set up the optional lengths table */
   uint16 block_length;
-  uint16* length_table = stream->length_table;
+  uint16* length_table = NULL;
+  if (stream->index){
+    length_table = (uint16*)stream->index->data;
+  }
 
   /* compress array one block of 4x4 values at a time */
   for (y = 0; y < ny; y += 4)
@@ -100,7 +109,10 @@ _t2(compress_strided, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
 
   /* set up the optional lengths table */
   uint16 block_length;
-  uint16* length_table = stream->length_table;
+  uint16* length_table = NULL;
+  if (stream->index){
+    length_table = (uint16*)stream->index->data;
+  }
 
   /* compress array one block of 4x4x4 values at a time */
   for (z = 0; z < nz; z += 4)
@@ -137,7 +149,10 @@ _t2(compress_strided, Scalar, 4)(zfp_stream* stream, const zfp_field* field)
 
   /* set up the optional lengths table */
   uint16 block_length;
-  uint16* length_table = stream->length_table;
+  uint16* length_table = NULL;
+  if (stream->index){
+    length_table = (uint16*)stream->index->data;
+  }
 
   /* compress array one block of 4x4x4x4 values at a time */
   for (w = 0; w < nw; w += 4)

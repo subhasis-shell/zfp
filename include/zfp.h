@@ -124,6 +124,14 @@ typedef enum {
   zfp_exec_cuda   = 2  /* CUDA parallel execution */
 } zfp_exec_policy;
 
+/* index type */
+typedef enum {
+  zfp_index_none = 0,   /* no index */
+  zfp_index_offset = 1, /* offsets (OMP and CUDA decompression) */
+  zfp_index_length = 2, /* legths */
+} zfp_index_type;
+
+
 /* OpenMP execution parameters */
 typedef struct {
   uint threads;    /* number of requested threads */
@@ -140,18 +148,11 @@ typedef struct {
   zfp_exec_params params; /* execution parameters */
 } zfp_execution;
 
-/* index type */
-typedef enum {
-  none = 0,   /* no index (default) */
-  offset = 1, /* offset table (OMP and CUDA decompression) */
-  hybrid = 2  /* offset-length hybrid table, P=32, C=1, 64 bit offsets 16 bit lengths */
-} index_type;
-
 /* index for parallel decompression */
 typedef struct {
-  index_type type;       /* type of side channel information */
-  uint index_granularity;   /* number of blocks per chunk */
-  void* data; /* side channel information */
+  zfp_index_type type; /* zfp_index_none if no index */
+  void* data;          /* NULL if no index */
+  size_t size;         /* byte size of data (0 if no index) */
 } zfp_index;
 
 /* compressed stream; use accessors to get/set members */
@@ -162,7 +163,6 @@ typedef struct {
   int minexp;         /* minimum floating point bit plane number to store */
   bitstream* stream;  /* compressed bit stream */
   zfp_execution exec; /* execution policy and parameters */
-  uint16* length_table; /* table to store block lengths during compression */
   zfp_index* index;   /* index for parallel decompression */
 } zfp_stream;
 
@@ -336,59 +336,36 @@ zfp_stream_set_size(
   size_t size        /* size of the buffer */
 );
 
-/* set the index in the stream */
+/* set index of the stream */
 void
 zfp_stream_set_index(
-  zfp_stream* zfp,
+  zfp_stream* zfp,  /* compressed stream */
+  zfp_index* index  /* index */
+);
+
+/* allocate index struct */
+zfp_index* /* pointer to default uninitialized index */
+zfp_index_create();
+
+/* set the size of the index */
+void
+zfp_index_set_type(
+  zfp_index* index,    /* the index */
+  zfp_index_type type /* type of the index */
+);
+
+/* set the data of the index */
+void
+zfp_index_set_data(
+  zfp_index* index, /* index */
+  void* data,       /* buffer for index data */
+  size_t size       /* size of the index data buffer */
+);
+
+void
+zfp_index_free(
   zfp_index* index
 );
-
-/* set the length table in the stream */
-void
-zfp_stream_set_length_table(
-  zfp_stream* zfp,
-  uint16* length_table
-);
-
-/* set the index params */
-int
-index_set_params(
-  zfp_index* index,
-  index_type type,
-  uint index_granularity
-);
-
-/* set the index data */
-void
-index_set_data(
-  zfp_index* index,
-  void* data
-);
-
-/* allocate the index */
-zfp_index*
-index_alloc();
-
-/* free the index */
-void
-index_free(
-  zfp_index* index
-);
-
-/* size of the index */
-size_t
-index_size(
-  const zfp_stream* stream,
-  const zfp_field* field
-);
-
-/* encode the index */
-int
-index_encode(
-  const zfp_stream* index,
-  const zfp_field* field
-);
-
 
 /* high-level API: execution policy ---------------------------------------- */
 

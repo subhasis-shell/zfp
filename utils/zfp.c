@@ -115,8 +115,7 @@ usage()
   fprintf(stderr, "  -x omp[=threads[,chunk_size]] : OpenMP parallel compression\n");
   fprintf(stderr, "  -x cuda : CUDA fixed rate parallel compression/decompression\n");
   fprintf(stderr, "Index for parallel decompression:\n");
-  fprintf(stderr, "  -l <path>: Generate length table during compression, write to file \n");
-  fprintf(stderr, "  -m offset=<index_granularity> <path>: Read length table from file,\n  encode index with specified type and granularity");
+  fprintf(stderr, "  -m <path>: create index during compression, use index for parallel decompression\n");
   fprintf(stderr, "Examples:\n");
   fprintf(stderr, "  -i file : read uncompressed file and compress to memory\n");
   fprintf(stderr, "  -z file : read compressed file and decompress to memory\n");
@@ -130,8 +129,6 @@ usage()
   fprintf(stderr, "  -d -2 1000 1000 -p 32 : 32-bit precision compression of 1000x1000 doubles\n");
   fprintf(stderr, "  -d -1 1000000 -a 1e-9 : compression of 1M doubles with < 1e-9 max error\n");
   fprintf(stderr, "  -d -1 1000000 -c 64 64 0 -1074 : 4x fixed-rate compression of 1M doubles\n");
-  fprintf(stderr, "  -i ifile -l <path> : read ifile, compress, generate length table and write it to file\n");
-  fprintf(stderr, "  -z zfile -m <policy>=<granularity> <path> : read zfile, decompress variable rate\n  in parallel (OMP or CUDA), using index generated from length table in file\n");
   fprintf(stderr, "  -x omp=16,256 : parallel compression with 16 threads, 256-block chunks\n");
   exit(EXIT_FAILURE);
 }
@@ -140,7 +137,7 @@ int main(int argc, char* argv[])
 {
   /* default settings */
   zfp_type type = zfp_type_none;
-  index_type i_type = none;
+  zfp_index_type index_type = zfp_index_none;
   size_t typesize = 0;
   uint dims = 0;
   uint nx = 0;
@@ -158,40 +155,32 @@ int main(int argc, char* argv[])
   int header = 0;
   int quiet = 0;
   int stats = 0;
-  int use_index = 0;
-  int generate_length_table = 0;
   char* inpath = 0;
   char* zfppath = 0;
   char* outpath = 0;
-  char* tablepath_w = 0;
-  char* tablepath_r = 0;
+  char* indexpath = 0;
   char mode = 0;
   zfp_exec_policy exec = zfp_exec_serial;
   uint threads = 0;
-  uint chunks = 0;
   uint chunk_size = 0;
-  uint index_granularity = 0;
-  uint partitions = 0;
-  uint partition_size = 0;
-
+  bool use_index = 0;
 
   /* local variables */
   int i;
   zfp_field* field = NULL;
   zfp_stream* zfp = NULL;
-  bitstream* stream = NULL;
   zfp_index* index = NULL;
-  uint16* length_table = NULL;
+  bitstream* stream = NULL;
   void* index_data = NULL;
   void* fi = NULL;
   void* fo = NULL;
   void* buffer = NULL;
-  size_t blocks = 0;
+  void* idxbuffer = NULL;
   size_t rawsize = 0;
   size_t zfpsize = 0;
   size_t bufsize = 0;
-  size_t length_table_size = 0;
-  size_t isize = 0;
+  size_t idxsize = 0;
+  size_t idxbufsize = 0;
 
   if (argc == 1)
     usage();
@@ -316,23 +305,12 @@ int main(int argc, char* argv[])
         else
           usage();
         break;
-      case 'l':
-        generate_length_table = 1;
-        if (++i == argc)
-          usage();
-        tablepath_w = argv[i];
-        break;
       case 'm':
         use_index = 1;
         if (++i == argc)
+          printf("No index file path specified\n")
           usage();
-        if (sscanf(argv[i], "offset=%u", &index_granularity) == 1)
-          i_type = offset;
-        else
-          usage();
-        if (++i == argc)
-          usage();
-        tablepath_r = argv[i];
+        indexpath = argv[i];
         break;
       case 'z':
         if (++i == argc)
@@ -410,6 +388,7 @@ int main(int argc, char* argv[])
 
   zfp = zfp_stream_open(NULL);
   field = zfp_field_alloc();
+  index = zfp_index_create();
 
   /* read uncompressed or compressed file */
   if (inpath) {
@@ -563,16 +542,14 @@ int main(int argc, char* argv[])
       return EXIT_FAILURE;
     }
 
-    /* optionally allocate the length table */
-    if (generate_length_table) {
-      blocks = (size_t)((nx + 3)/4) * (size_t)((ny + 3)/4) * (size_t)((nz + 3)/4) * (size_t)((nw + 3)/4);
-      length_table_size = sizeof(uint16) * blocks;
-      length_table = malloc(length_table_size);
-      if (!length_table) {
-        fprintf(stderr, "cannot allocate memory for length table\n");
-        return EXIT_FAILURE;
-      }
-      zfp_stream_set_length_table(zfp, length_table);
+    /* optionally set the index type */
+    if (index_type) {
+      zfp_index_set_type(index, index_type);
+    }
+
+    /* optionally set the index */
+    if (use_index) {
+      zfp_stream_set_index(zfp, index);
     }
 
     /* compress data */
@@ -595,15 +572,18 @@ int main(int argc, char* argv[])
       }
       fclose(file);
     }
-    /* always write the length table if generated */
-    if (generate_length_table) {
-      FILE* file = !strcmp(tablepath_w, "-") ? stdout : fopen(tablepath_w, "wb");
+
+    /* optionally write index */
+    if (use_index && zfppath) {
+      FILE* file = !strcmp(indexpath, "-") ? stdout : fopen(indexpath, "wb");
       if (!file) {
-        fprintf(stderr, "cannot create length table file\n");
+        fprintf(stderr, "cannot create index file\n");
         return EXIT_FAILURE;
       }
-      if (fwrite(length_table, 1, length_table_size, file) != length_table_size) {
-        fprintf(stderr, "cannot write length table file\n");
+      index_data = zfp->index->data;
+      idxsize = zfp->index->size;
+      if (fwrite(index_data, 1, idxsize, file) != idxsize) {
+        fprintf(stderr, "cannot write index to file\n");
         return EXIT_FAILURE;
       }
       fclose(file);
@@ -646,55 +626,30 @@ int main(int argc, char* argv[])
       return EXIT_FAILURE;
     }
     zfp_field_set_pointer(field, fo);
-    /* allocate a buffer for the index and encode it */
-    /* TODO: implement multiple types, currently only 64 bit offsets */
-    if (use_index) {
-      index = index_alloc();
-      if(!index_set_params(index, i_type, index_granularity)) {
-        fprintf(stderr, "invalid index parameters\n");
+    /* read index in increasingly large chunks */
+    if (use_index && (index_data == NULL)) {
+      FILE* file = !strcmp(idxpath, "-") ? stdin : fopen(idxpath, "rb");
+      if (!file) {
+        fprintf(stderr, "cannot open index file\n");
+       return EXIT_FAILURE;
+      }
+      idxbufsize = 0x100;
+      do {
+        idxbufsize *= 2;
+        idxbuffer = realloc(idxbuffer, idxbufsize);
+        if (!idxbuffer) {
+          fprintf(stderr, "cannot allocate memory for index\n");
+          return EXIT_FAILURE;
+        }
+        idxsize += fread((uchar*)idxbuffer + idxsize, 1, idxbufsize - idxsize, file);
+      } while (idxsize == idxbufsize);
+      if (ferror(file)) {
+        fprintf(stderr, "cannot read index file\n");
         return EXIT_FAILURE;
       }
+      fclose(file);
+      zfp_index_set_data(index, idxbuffer, size);
       zfp_stream_set_index(zfp, index);
-      /* check if length table is present, if not read from file */
-      if(!length_table) {
-        /* calculate size and allocate length table */
-        blocks = (size_t)((nx + 3)/4) * (size_t)((ny + 3)/4) * (size_t)((nz + 3)/4) * (size_t)((nw + 3)/4);
-        length_table_size = sizeof(uint16) * blocks;
-        length_table = malloc(length_table_size);
-        if (!length_table) {
-          fprintf(stderr, "cannot allocate memory for length table\n");
-          return EXIT_FAILURE;
-        }
-        zfp_stream_set_length_table(zfp, length_table);
-        /* read length table from file */
-        FILE* file = !strcmp(tablepath_r, "-") ? stdin : fopen(tablepath_r, "rb");
-        if (!file) {
-          fprintf(stderr, "cannot open length table file\n");
-          return EXIT_FAILURE;
-        }
-        if (fread(length_table, sizeof(uint16), blocks, file) != blocks) {
-          fprintf(stderr, "cannot read length table file\n");
-          return EXIT_FAILURE;
-        }
-        fclose(file);
-      }
-      isize = index_size(zfp, field);
-      if (isize) {
-        index_data = malloc(isize);
-      }
-      else {
-        fprintf(stderr, "index size must be nonzero\n");
-        return EXIT_FAILURE;
-      }
-      if (!index_data) {
-        fprintf(stderr, "cannot allocate memory for index\n");
-        return EXIT_FAILURE;
-      }
-      index_set_data(index, index_data);
-      if (!index_encode(zfp, field)) {
-        fprintf(stderr, "cannot encode index\n");
-        return EXIT_FAILURE;
-      }
     }
 
     /* decompress data */
@@ -744,10 +699,10 @@ int main(int argc, char* argv[])
   free(buffer);
   free(fi);
   free(fo);
-  if(length_table)
-    free(length_table);
+  if(idxbuffer)
+    free(idxbuffer);
   if(index)
-    index_free(index);
+    zfp_index_free(index);
 
   return EXIT_SUCCESS;
 }

@@ -100,6 +100,7 @@ compress_finish_par(zfp_stream* stream, bitstream** src, uint chunks)
 /* initialize per-thread bit streams for parallel decompression */
 static bitstream**
 decompress_init_par(zfp_stream* stream, const zfp_field* field, const uint chunks, const uint blocks)
+// UPDATE!!!
 {
   int i;
   void * buffer = stream_data(zfp_stream_bit_stream(stream));
@@ -124,23 +125,23 @@ decompress_init_par(zfp_stream* stream, const zfp_field* field, const uint chunk
     }
   }
   else if (mode == zfp_mode_fixed_accuracy || mode == zfp_mode_fixed_precision) {
-    const index_type type = stream->index->type;
-    if (type == offset) {
-      uint64* offset_table = (uint64*)stream->index->data;
-      for (i = 0; i < (int)chunks; i++) {
-        /* read the chunk offset and set the bitstream to the start of the chunk */
-        bs[i] = stream_open(buffer, size);
-        if (!bs[i]) {
-          /* memory for bitstream not properly allocated */
-          return NULL;
-        }
-        stream_rseek(bs[i], (size_t)offset_table[i]);
-      }
-    }
-    else {
-    /* unsupported index type */
-      return NULL;
-    }
+//    const zfp_index_type type = stream->index->type;
+//    if (type == zfp_index_offset) {
+//      uint64* offset_table = (uint64*)stream->index->data;
+//      for (i = 0; i < (int)chunks; i++) {
+//        /* read the chunk offset and set the bitstream to the start of the chunk */
+//        bs[i] = stream_open(buffer, size);
+//        if (!bs[i]) {
+//          /* memory for bitstream not properly allocated */
+//          return NULL;
+//        }
+//        stream_rseek(bs[i], (size_t)offset_table[i]);
+//      }
+//    }
+//    else {
+//    /* unsupported index type */
+//      return NULL;
+//    }
   }
   else {
     /* expert mode not available */

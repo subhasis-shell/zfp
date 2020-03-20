@@ -18,7 +18,7 @@ _t2(decompress_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
     else {
     index_granularity = stream->index->index_granularity;
     /* current implementation only supports OpenMP decompression with an offset table */
-    if (stream->index->type != offset)
+    if (stream->index->type != zfp_index_offset)
       return;
     }
   }
@@ -80,7 +80,7 @@ _t2(decompress_strided_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
     else {
       index_granularity = stream->index->index_granularity;
       /* current implementation only supports OpenMP decompression with an offset table */
-      if (stream->index->type != offset)
+      if (stream->index->type != zfp_index_offset)
         return;
     }
   }
@@ -146,7 +146,7 @@ _t2(decompress_strided_omp, Scalar, 2)(zfp_stream* stream, zfp_field* field)
     else {
       index_granularity = stream->index->index_granularity;
       /* current implementation only supports OpenMP decompression with an offset table */
-      if (stream->index->type != offset)
+      if (stream->index->type != zfp_index_offset)
         return;
     }
   }
@@ -216,7 +216,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     else {
       index_granularity = stream->index->index_granularity;
       /* current implementation only supports OpenMP decompression with an offset table */
-      if (stream->index->type != offset)
+      if (stream->index->type != zfp_index_offset)
         return;
     }
   }
@@ -290,7 +290,7 @@ _t2(decompress_strided_omp, Scalar, 4)(zfp_stream* stream, zfp_field* field)
     else {
       index_granularity = stream->index->index_granularity;
       /* current implementation only supports OpenMP decompression with an offset table */
-      if (stream->index->type != offset)
+      if (stream->index->type != zfp_index_offset)
         return;
     }
   }
