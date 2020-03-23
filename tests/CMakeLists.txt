@@ -17,6 +17,8 @@ ExternalProject_Add(
   CMAKE_ARGS        ${CMOCKA_ARGS}
   BUILD_COMMAND     ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${CMAKE_BINARY_DIR} cmocka_static
   INSTALL_COMMAND   ""
+  STEP_TARGETS build
+  EXCLUDE_FROM_ALL TRUE
 )
 ExternalProject_Get_Property(cmocka_cloned source_dir binary_dir)
 
@@ -69,7 +71,8 @@ if(MSVC)
 endif()
 
 # TODO: spend time getting googletest to compile on MinGW
-if((NOT MINGW) AND (NOT DEFINED ZFP_OMP_TESTS_ONLY))
+# checksums are generated through C tests, no need to compile C++ tests
+if((NOT MINGW) AND (NOT DEFINED ZFP_OMP_TESTS_ONLY) AND (NOT PRINT_CHECKSUMS))
   # clone googletest into build/
   configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
   execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" ${GTEST_ARGS} .
