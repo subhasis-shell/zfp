@@ -128,9 +128,8 @@ typedef enum {
 typedef enum {
   zfp_index_none = 0,   /* no index */
   zfp_index_offset = 1, /* offsets (OMP and CUDA decompression) */
-  zfp_index_length = 2, /* legths */
+  zfp_index_length = 2, /* lengths */
 } zfp_index_type;
-
 
 /* OpenMP execution parameters */
 typedef struct {

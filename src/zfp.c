@@ -771,9 +771,6 @@ zfp_index_set_data(zfp_index* index, void* data, size_t size)
 void
 zfp_index_free(zfp_index* index)
 {
-  if (index->data) {
-    free(index->data);
-  }
   free(index);
 }
 
@@ -987,7 +984,7 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
   size_t blocks;
   size_t index_size = 0;
   void* index_data = NULL;
-  void*  = NULL;
+  void* length_table = NULL;
   zfp_index_type idx_type = zfp_index_none;
   int i;
 
@@ -1116,6 +1113,9 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
   uint dims = zfp_field_dimensionality(field);
   uint type = field->type;
   void (*decompress)(zfp_stream*, zfp_field*);
+  zfp_mode mode = zfp_stream_compression_mode(zfp);
+  uint64* index64 = NULL;
+  uint64 index_type = 0;
 
   switch (type) {
     case zfp_type_int32:
@@ -1124,6 +1124,31 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
     case zfp_type_double:
       break;
     default:
+      return 0;
+  }
+
+  /* check if index for parallel decompression is needed and present
+  TODO: Add CUDA support later */
+  if (exec == zfp_exec_omp && ((mode == zfp_mode_fixed_accuracy) ^ (mode == zfp_mode_fixed_precision))) {
+    if (zfp->index != NULL){
+      if (zfp->index->data != NULL) {
+        index64 = (uint64*)zfp->index->data;
+        index_type = index64[0];
+        /* TODO: Extend this to convert/support multiple index types */
+        if (index_type == 1) {
+          /* TODO: decide how to store the decoded header information in the index struct */
+          /* Shift the index data pointer to skip the header when decompressing */
+          index64 += 1;
+          zfp->index->data = (void*)(index64);
+          zfp->index->type = zfp_index_offset;
+        }
+        else
+          return 0;
+      }
+      else
+        return 0;
+    }
+    else
       return 0;
   }
 

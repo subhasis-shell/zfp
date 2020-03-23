@@ -11,15 +11,19 @@ _t2(decompress_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
 
   /* calculate the number of blocks and chunks */
   const uint blocks = (nx + 3) / 4;
-  uint index_granularity = 1;
+  uint index_granularity;
   if (mode == zfp_mode_fixed_accuracy || mode == zfp_mode_fixed_precision) {
-    if (!stream->index)
+    if (stream->index == NULL)
       return;
     else {
-    index_granularity = stream->index->index_granularity;
-    /* current implementation only supports OpenMP decompression with an offset table */
-    if (stream->index->type != zfp_index_offset)
-      return;
+      /* TODO: support variable index granularity! 
+      Ideally this should be readable from stream->index->granularity, or similar
+      Allowing this number to be >>1 is extremely beneficial */
+      index_granularity = 1;
+      /* TODO: support more types
+      current implementation only supports OpenMP decompression with an offset table */
+      if (stream->index->type != zfp_index_offset)
+        return;
     }
   }
   const uint chunks = (blocks + index_granularity - 1) / index_granularity;
@@ -56,8 +60,8 @@ _t2(decompress_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
     }
   }
   decompress_finish_par(bs, chunks);
-  /* read a bit from the bitstream to prevent decompression failed
-  TODO: find a better fix */
+  /* TODO: find a better solution
+  this workaround reads a bit from the bitstream, because the bitstream pointer is checked to see if decompression was succesful */
   stream_read_bit(stream->stream);
 }
 
@@ -78,8 +82,12 @@ _t2(decompress_strided_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
     if (!stream->index)
       return;
     else {
-      index_granularity = stream->index->index_granularity;
-      /* current implementation only supports OpenMP decompression with an offset table */
+      /* TODO: support variable index granularity! 
+      Ideally this should be readable from stream->index->granularity, or similar
+      Allowing this number to be >>1 is extremely beneficial */
+      index_granularity = 1;
+      /* TODO: support more types
+      current implementation only supports OpenMP decompression with an offset table */
       if (stream->index->type != zfp_index_offset)
         return;
     }
@@ -118,8 +126,8 @@ _t2(decompress_strided_omp, Scalar, 1)(zfp_stream* stream, zfp_field* field)
     }
   }
   decompress_finish_par(bs, chunks);
-  /* read a bit from the bitstream to prevent decompression failed
-  TODO: find a better fix */
+  /* TODO: find a better solution
+  this workaround reads a bit from the bitstream, because the bitstream pointer is checked to see if decompression was succesful */
   stream_read_bit(stream->stream);
 }
 
@@ -144,8 +152,12 @@ _t2(decompress_strided_omp, Scalar, 2)(zfp_stream* stream, zfp_field* field)
     if (!stream->index)
       return;
     else {
-      index_granularity = stream->index->index_granularity;
-      /* current implementation only supports OpenMP decompression with an offset table */
+      /* TODO: support variable index granularity! 
+      Ideally this should be readable from stream->index->granularity, or similar
+      Allowing this number to be >>1 is extremely beneficial */
+      index_granularity = 1;
+      /* TODO: support more types
+      current implementation only supports OpenMP decompression with an offset table */
       if (stream->index->type != zfp_index_offset)
         return;
     }
@@ -185,8 +197,8 @@ _t2(decompress_strided_omp, Scalar, 2)(zfp_stream* stream, zfp_field* field)
     }
   }
   decompress_finish_par(bs, chunks);
-  /* read a bit from the bitstream to prevent decompression failed
-  TODO: find a better fix */
+  /* TODO: find a better solution
+  this workaround reads a bit from the bitstream, because the bitstream pointer is checked to see if decompression was succesful */
   stream_read_bit(stream->stream);
 }
 
@@ -214,8 +226,12 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     if (!stream->index)
       return;
     else {
-      index_granularity = stream->index->index_granularity;
-      /* current implementation only supports OpenMP decompression with an offset table */
+      /* TODO: support variable index granularity! 
+      Ideally this should be readable from stream->index->granularity, or similar
+      Allowing this number to be >>1 is extremely beneficial */
+      index_granularity = 1;
+      /* TODO: support more types
+      current implementation only supports OpenMP decompression with an offset table */
       if (stream->index->type != zfp_index_offset)
         return;
     }
@@ -256,8 +272,8 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     }
   }
   decompress_finish_par(bs, chunks);
-  /* read a bit from the bitstream to prevent decompression failed
-  TODO: find a better fix */
+  /* TODO: find a better solution
+  this workaround reads a bit from the bitstream, because the bitstream pointer is checked to see if decompression was succesful */
   stream_read_bit(stream->stream);
 }
 
@@ -288,8 +304,12 @@ _t2(decompress_strided_omp, Scalar, 4)(zfp_stream* stream, zfp_field* field)
     if (!stream->index)
       return;
     else {
-      index_granularity = stream->index->index_granularity;
-      /* current implementation only supports OpenMP decompression with an offset table */
+      /* TODO: support variable index granularity! 
+      Ideally this should be readable from stream->index->granularity, or similar
+      Allowing this number to be >>1 is extremely beneficial */
+      index_granularity = 1;
+      /* TODO: support more types
+      current implementation only supports OpenMP decompression with an offset table */
       if (stream->index->type != zfp_index_offset)
         return;
     }
@@ -331,8 +351,8 @@ _t2(decompress_strided_omp, Scalar, 4)(zfp_stream* stream, zfp_field* field)
     }
   }
   decompress_finish_par(bs, chunks);
-  /* read a bit from the bitstream to prevent decompression failed
-  TODO: find a better fix */
+  /* TODO: find a better solution
+  this workaround reads a bit from the bitstream, because the bitstream pointer is checked to see if decompression was succesful */
   stream_read_bit(stream->stream);
 }
 

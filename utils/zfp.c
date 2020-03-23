@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "zfp.h"
 #include "zfp/macros.h"
 
@@ -307,9 +308,10 @@ int main(int argc, char* argv[])
         break;
       case 'm':
         use_index = 1;
-        if (++i == argc)
-          printf("No index file path specified\n")
+        if (++i == argc) {
+          printf("No index file path specified\n");
           usage();
+        }
         indexpath = argv[i];
         break;
       case 'z':
@@ -627,8 +629,8 @@ int main(int argc, char* argv[])
     }
     zfp_field_set_pointer(field, fo);
     /* read index in increasingly large chunks */
-    if (use_index && (index_data == NULL)) {
-      FILE* file = !strcmp(idxpath, "-") ? stdin : fopen(idxpath, "rb");
+    if (use_index && (zfp->index == NULL)) {
+      FILE* file = !strcmp(indexpath, "-") ? stdin : fopen(indexpath, "rb");
       if (!file) {
         fprintf(stderr, "cannot open index file\n");
        return EXIT_FAILURE;
@@ -648,7 +650,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
       }
       fclose(file);
-      zfp_index_set_data(index, idxbuffer, size);
+      zfp_index_set_data(index, idxbuffer, idxsize);
       zfp_stream_set_index(zfp, index);
     }
 
