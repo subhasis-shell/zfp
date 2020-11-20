@@ -6,8 +6,8 @@
 #include "zfp/system.h"
 
 /* forward declaration of opaque type */
-typedef struct bitstream bitstream;
 
+typedef struct bitstream bitstream;
 extern_ const size_t stream_word_bits; /* bit stream granularity */
 
 #ifndef inline_

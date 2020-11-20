@@ -157,6 +157,8 @@ size_t decode3launch(uint3 dims,
      stride,
      zfp_pad,
      maxbits);
+  fprintf(stderr, "Getting device synchronized in cudaDecode3 \n");
+  checkCudaError(cudaDeviceSynchronize());
 
 #ifdef CUDA_ZFP_RATE_PRINT
   cudaEventRecord(stop);

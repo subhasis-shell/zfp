@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+
+#include <cuda_runtime.h>
+
 #include "zfp.h"
 #include "zfp/macros.h"
 
@@ -173,16 +176,18 @@ int main(int argc, char* argv[])
   zfp_index* index = NULL;
   bitstream* stream = NULL;
   void* index_data = NULL;
-  void* fi = NULL;
+  void* raw_indata_ptr = NULL;
   void* fo = NULL;
-  void* buffer = NULL;
+  void* compressed_buffer_ptr = NULL;
+  size_t compressed_bufsize = 0;
   void* idxbuffer = NULL;
   size_t rawsize = 0;
   size_t zfpsize = 0;
-  size_t bufsize = 0;
   size_t idxsize = 0;
   size_t idxbufsize = 0;
-
+    
+  void *host_cuda_ptr;
+  
   if (argc == 1)
     usage();
 
@@ -308,6 +313,7 @@ int main(int argc, char* argv[])
         break;
       case 'm':
         use_index = 1;
+        printf("prints index set message\n");
         if (++i == argc) {
           printf("No index file path specified\n");
           usage();
@@ -401,43 +407,71 @@ int main(int argc, char* argv[])
       return EXIT_FAILURE;
     }
     rawsize = typesize * count;
-    fi = malloc(rawsize);
-    if (!fi) {
+    
+    if(exec == zfp_exec_cuda) {
+      cudaError_t code = cudaMallocHost((void**) &raw_indata_ptr, rawsize);
+      if(code != cudaSuccess) {
+        fprintf(stderr, "Cuda Assert: %s %s %d\n",
+                        cudaGetErrorString(code), __FILE__, __LINE__);
+        exit(code);
+      }
+    }
+    else { // CPU execution
+      raw_indata_ptr = malloc(rawsize);
+    }
+
+    if (!raw_indata_ptr) {
       fprintf(stderr, "cannot allocate memory\n");
       return EXIT_FAILURE;
     }
-    if (fread(fi, typesize, count, file) != count) {
+    if (fread(raw_indata_ptr, typesize, count, file) != count) {
       fprintf(stderr, "cannot read input file\n");
       return EXIT_FAILURE;
     }
     fclose(file);
-    zfp_field_set_pointer(field, fi);
+    zfp_field_set_pointer(field, raw_indata_ptr);
   }
-  else {
+  else { // decompression - input file read
     /* read compressed input file in increasingly large chunks */
     FILE* file = !strcmp(zfppath, "-") ? stdin : fopen(zfppath, "rb");
     if (!file) {
       fprintf(stderr, "cannot open compressed file\n");
       return EXIT_FAILURE;
     }
-    bufsize = 0x100;
+    compressed_bufsize = 0x100;
     do {
-      bufsize *= 2;
-      buffer = realloc(buffer, bufsize);
-      if (!buffer) {
+      compressed_bufsize *= 2;
+      compressed_buffer_ptr = realloc(compressed_buffer_ptr, compressed_bufsize);
+      if (!compressed_buffer_ptr) {
         fprintf(stderr, "cannot allocate memory\n");
         return EXIT_FAILURE;
       }
-      zfpsize += fread((uchar*)buffer + zfpsize, 1, bufsize - zfpsize, file);
-    } while (zfpsize == bufsize);
+      zfpsize += fread((uchar*)compressed_buffer_ptr + zfpsize, 1, 
+                       compressed_bufsize - zfpsize, file);
+    } while (zfpsize == compressed_bufsize);
+
     if (ferror(file)) {
       fprintf(stderr, "cannot read compressed file\n");
       return EXIT_FAILURE;
     }
     fclose(file);
 
-    /* associate bit stream with buffer */
-    stream = stream_open(buffer, bufsize);
+
+    if(exec == zfp_exec_cuda) {
+      cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, compressed_bufsize);
+      if(code != cudaSuccess) {
+        fprintf(stderr, "Cuda Assert: %s %s %d\n",
+                        cudaGetErrorString(code), __FILE__, __LINE__);
+        exit(code);
+      }
+      memcpy(host_cuda_ptr, compressed_buffer_ptr, compressed_bufsize);
+      stream = stream_open(host_cuda_ptr, compressed_bufsize);
+    }
+    else {
+      /* associate bit stream with buffer */
+      stream = stream_open(compressed_buffer_ptr, compressed_bufsize);
+    }
+
     if (!stream) {
       fprintf(stderr, "cannot open compressed stream\n");
       return EXIT_FAILURE;
@@ -519,19 +553,33 @@ int main(int argc, char* argv[])
   /* compress input file if provided */
   if (inpath) {
     /* allocate buffer for compressed data */
-    bufsize = zfp_stream_maximum_size(zfp, field);
-    if (!bufsize) {
+    compressed_bufsize = zfp_stream_maximum_size(zfp, field);
+    if (!compressed_bufsize) {
       fprintf(stderr, "invalid compression parameters\n");
       return EXIT_FAILURE;
     }
-    buffer = malloc(bufsize);
-    if (!buffer) {
-      fprintf(stderr, "cannot allocate memory for uncompressed input file\n");
-      return EXIT_FAILURE;
+
+    if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
+      cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, 
+                                        compressed_bufsize);
+      if(code != cudaSuccess) {
+        fprintf(stderr, "Cuda Assert: %s %s %d\n",
+                        cudaGetErrorString(code), __FILE__, __LINE__);
+        exit(code);
+      }
+      /* associate allocated memory buffer to stream */
+      stream = stream_open(host_cuda_ptr, compressed_bufsize);
+    }
+    else { // CPU exec mode
+      compressed_buffer_ptr = malloc(compressed_bufsize);
+      if (!compressed_buffer_ptr) {
+        fprintf(stderr, "cannot allocate memory for uncompressed input file\n");
+        return EXIT_FAILURE;
+      }
+      /* associate allocated memory buffer to stream */
+      stream = stream_open(compressed_buffer_ptr, compressed_bufsize);
     }
 
-    /* associate compressed bit stream with memory buffer */
-    stream = stream_open(buffer, bufsize);
     if (!stream) {
       fprintf(stderr, "cannot open compressed stream\n");
       return EXIT_FAILURE;
@@ -568,10 +616,20 @@ int main(int argc, char* argv[])
         fprintf(stderr, "cannot create compressed file\n");
         return EXIT_FAILURE;
       }
-      if (fwrite(buffer, 1, zfpsize, file) != zfpsize) {
-        fprintf(stderr, "cannot write compressed file\n");
-        return EXIT_FAILURE;
+    
+      if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
+        if (fwrite(host_cuda_ptr, 1, zfpsize, file) != zfpsize) {
+          fprintf(stderr, "cannot write GPU compressed file\n");
+          return EXIT_FAILURE;
+        }
       }
+      else { // CPU executio, writing CPU data
+          if(fwrite(compressed_buffer_ptr, 1, zfpsize, file) != zfpsize) {
+            fprintf(stderr, "cannot write CPU compressed file \n");
+            return EXIT_FAILURE;
+          }
+      }
+
       fclose(file);
     }
 
@@ -622,12 +680,25 @@ int main(int argc, char* argv[])
 
     /* allocate memory for decompressed data */
     rawsize = typesize * count;
-    fo = malloc(rawsize);
+    
+    if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
+      cudaError_t code = cudaMallocHost((void**) &fo, rawsize);
+      if(code != cudaSuccess) {
+        fprintf(stderr, "Cuda Assert: %s %s %d\n",
+                        cudaGetErrorString(code), __FILE__, __LINE__);
+        exit(code);
+      }
+    }
+    else { // CPU execution
+      fo = malloc(rawsize);
+    }
+
     if (!fo) {
       fprintf(stderr, "cannot allocate memory for compressed input file\n");
       return EXIT_FAILURE;
     }
     zfp_field_set_pointer(field, fo);
+
     /* read index in increasingly large chunks */
     if (use_index && (zfp->index == NULL)) {
       FILE* file = !strcmp(indexpath, "-") ? stdin : fopen(indexpath, "rb");
@@ -690,17 +761,26 @@ int main(int argc, char* argv[])
     fprintf(stderr, "type=%s nx=%u ny=%u nz=%u nw=%u", type_name[type - zfp_type_int32], nx, ny, nz, nw);
     fprintf(stderr, " raw=%lu zfp=%lu ratio=%.3g rate=%.4g", (unsigned long)rawsize, (unsigned long)zfpsize, (double)rawsize / zfpsize, CHAR_BIT * (double)zfpsize / count);
     if (stats)
-      print_error(fi, fo, type, count);
+      print_error(raw_indata_ptr, fo, type, count);
     fprintf(stderr, "\n");
   }
 
   /* free allocated storage */
+ 
+  if(zfp->exec.policy == zfp_exec_cuda) {
+    checkCudaError(cudaFreeHost(raw_indata_ptr));
+    checkCudaError(cudaFreeHost(host_cuda_ptr));
+    checkCudaError(cudaFreeHost(fo));
+  }
+  else {
+    free(raw_indata_ptr);
+    free(compressed_buffer_ptr);
+    free(fo);
+  }
   zfp_field_free(field);
   zfp_stream_close(zfp);
   stream_close(stream);
-  free(buffer);
-  free(fi);
-  free(fo);
+
   if(idxbuffer)
     free(idxbuffer);
   if(index)

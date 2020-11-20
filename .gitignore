@@ -1,5 +1,5 @@
 *.a
 *.o
 bin
-build
+build-*
 lib

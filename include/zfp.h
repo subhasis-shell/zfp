@@ -9,7 +9,10 @@
 
 #include "zfp/types.h"
 #include "zfp/system.h"
+// Include bitstream structure in bitstruct.h
+#include "streamstruct.h"
 #include "bitstream.h"
+#include "cudaerror_macro.h"
 
 /* macros ------------------------------------------------------------------ */
 
@@ -137,6 +140,13 @@ typedef struct {
   int sx, sy, sz, sw;  /* strides (zero for contiguous array a[nw][nz][ny][nx]) */
   void* data;          /* pointer to array data */
 } zfp_field;
+
+/* Adding additional struct to pass params for GPU offloading */
+
+typedef struct {
+  unsigned long long  *device_stream;  // compressed stream on device
+  void *device_data;  // Uncompressed data on device
+} ext_zfp_field;
 
 #ifdef __cplusplus
 extern "C" {
@@ -747,6 +757,16 @@ void zfp_demote_int32_to_int8(int8* oblock, const int32* iblock, uint dims);
 void zfp_demote_int32_to_uint8(uint8* oblock, const int32* iblock, uint dims);
 void zfp_demote_int32_to_int16(int16* oblock, const int32* iblock, uint dims);
 void zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims);
+
+/* CUDA zfp calls, decoupled memory management 
+ * Added by: Subhasis, Shell */
+
+size_t zfp_encode_gpu(zfp_stream *stream, 
+                      zfp_field *field, 
+                      ext_zfp_field *add_field);
+size_t zfp_decode_gpu(zfp_stream *stream, 
+                    zfp_field *field, 
+                    ext_zfp_field *add_field);
 
 #ifdef __cplusplus
 }

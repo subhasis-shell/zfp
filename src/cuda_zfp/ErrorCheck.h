@@ -19,7 +19,8 @@ public:
     if (error != cudaSuccess)
     {
       std::cout << msg << " : " << error;
-      std::cout << " " << cudaGetErrorString(error) << std::endl;
+      std::cout << " " << cudaGetErrorString(error) << "From file: " << __FILE__ << 
+                   "line: " << __LINE__ << std::endl;
     }
   }
 
@@ -28,7 +29,7 @@ public:
     chk(str.str());
     str.str("");
   }
-  cudaError error;
+  cudaError_t error;
   stringstream str;
 };
 

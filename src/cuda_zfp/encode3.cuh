@@ -165,6 +165,10 @@ size_t encode3launch(uint3 dims,
      stride,
      zfp_pad,
      zfp_blocks);
+  
+  // Added to make sure device synchronization happens
+  fprintf(stderr, "Getting device synchronized in cudaEncode\n");
+  checkCudaError(cudaDeviceSynchronize());
 
 #ifdef CUDA_ZFP_RATE_PRINT
   cudaEventRecord(stop);
@@ -188,12 +192,13 @@ size_t encode3launch(uint3 dims,
 // Just pass the raw pointer to the "real" encode
 //
 template<class Scalar>
-size_t encode(uint3 dims, 
+size_t encode3(uint3 dims, 
               int3 stride,
               Scalar *d_data,
               Word *stream,
               const int bits_per_block)
 {
+  std::cout << "Calling Encode3 from encode3.cuh "<< std::endl;
   return encode3launch<Scalar>(dims, stride, d_data, stream, bits_per_block);
 }
 
