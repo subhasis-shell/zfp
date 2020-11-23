@@ -209,7 +209,14 @@ Word *setup_device_stream_compress(zfp_stream *stream,const zfp_field *field)
 
   Word *d_stream = NULL;
   size_t max_size = zfp_stream_maximum_size(stream, field);
-  checkCudaError(cudaMalloc(&d_stream, max_size));
+  if (field->cuda_malloc_func)
+  {
+    checkCudaError(field->cuda_malloc_func((void**) &d_stream, max_size));
+  }
+  else
+  {
+    checkCudaError(cudaMalloc(&d_stream, max_size));
+  }
 
   // fprintf(stderr, "Compress - device stream - place compressed data = %p\n",
   //        d_stream);
@@ -230,7 +237,14 @@ Word *setup_device_stream_decompress(zfp_stream *stream,const zfp_field *field)
   Word *d_stream = NULL;
   //TODO: change maximum_size to compressed stream size
   size_t size = zfp_stream_maximum_size(stream, field);
-  checkCudaError(cudaMalloc(&d_stream, size));
+  if (field->cuda_malloc_func)
+  {
+    checkCudaError(field->cuda_malloc_func((void**) &d_stream, size));
+  }
+  else
+  {
+    checkCudaError(cudaMalloc(&d_stream, size));
+  }
   
   // fprintf(stderr, "Print from cuZFP = size = %d, dest addr = %p, address src comp = %p\n",
   //        size, d_stream, stream->stream->begin);
@@ -302,7 +316,14 @@ void *setup_device_field_compress(const zfp_field *field, const int3 &stride, lo
   
   if(contig)
   {
-    checkCudaError(cudaMalloc(&d_data, field_bytes));
+    if (field->cuda_malloc_func)
+    {
+      checkCudaError(field->cuda_malloc_func((void**) &d_data, field_bytes));
+    }
+    else
+    {
+      checkCudaError(cudaMalloc(&d_data, field_bytes));
+    }
     checkCudaError(cudaMemcpy(d_data, host_ptr, field_bytes, cudaMemcpyHostToDevice));
   }
   
@@ -341,13 +362,20 @@ void *setup_device_field_decompress(const zfp_field *field, const int3 &stride, 
   if(contig)
   {
     size_t field_bytes = type_size * field_size;
-    checkCudaError(cudaMalloc(&d_data, field_bytes));
+    if (field->cuda_malloc_func)
+    {
+      checkCudaError(field->cuda_malloc_func((void**) &d_data, field_bytes));
+    }
+    else
+    {
+      checkCudaError(cudaMalloc(&d_data, field_bytes));
+    }
   }
 
   return offset_void(field->type, d_data, -offset);
 }
 
-void cleanup_device_ptr(void *orig_ptr, void *d_ptr, size_t bytes, long long int offset, zfp_type type)
+void cleanup_device_ptr(const zfp_field *field, void *orig_ptr, void *d_ptr, size_t bytes, long long int offset, zfp_type type)
 {
   bool device = cuZFP::is_gpu_ptr(orig_ptr);
   if(device)
@@ -363,7 +391,14 @@ void cleanup_device_ptr(void *orig_ptr, void *d_ptr, size_t bytes, long long int
     checkCudaError(cudaMemcpy(h_offset_ptr, d_offset_ptr, bytes, cudaMemcpyDeviceToHost));
   }
 
-  checkCudaError(cudaFree(d_offset_ptr));
+  if (field && field->cuda_free_func)
+  {
+    checkCudaError(field && field->cuda_free_func(d_offset_ptr));
+  }
+  else
+  {
+    checkCudaError(cudaFree(d_offset_ptr));
+  }
 }
 
 } // namespace internal
@@ -414,8 +449,8 @@ cuda_compress(zfp_stream *stream, const zfp_field *field)
     stream_bytes = internal::encode<long long int>(dims, stride, (int)stream->maxbits, data, d_stream);
   }
 
-  internal::cleanup_device_ptr(stream->stream->begin, d_stream, stream_bytes, 0, field->type);
-  internal::cleanup_device_ptr(field->data, d_data, 0, offset, field->type);
+  internal::cleanup_device_ptr(field, stream->stream->begin, d_stream, stream_bytes, 0, field->type);
+  internal::cleanup_device_ptr(field, field->data, d_data, 0, offset, field->type);
 
   // zfp wants to flush the stream.
   // set bits to wsize because we already did that.
@@ -495,8 +530,8 @@ cuda_decompress(zfp_stream *stream, zfp_field *field)
   }
   
   size_t bytes = type_size * field_size;
-  internal::cleanup_device_ptr(stream->stream->begin, d_stream, 0, 0, field->type);
-  internal::cleanup_device_ptr(field->data, d_data, bytes, offset, field->type);
+  internal::cleanup_device_ptr(field, stream->stream->begin, d_stream, 0, 0, field->type);
+  internal::cleanup_device_ptr(field, field->data, d_data, bytes, offset, field->type);
   
   // this is how zfp determins if this was a success
   size_t words_read = decoded_bytes / sizeof(Word);
