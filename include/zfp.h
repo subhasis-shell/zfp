@@ -133,6 +133,7 @@ typedef enum {
   zfp_type_double = 4  /* double precision floating point */
 } zfp_type;
 
+#define ZFP_HAS_CUSTOM_CUDA_MALLOC_FUNCTION
 typedef int (*cuda_malloc_function)(void** ptr, size_t size);
 typedef int (*cuda_free_function)(void* ptr);
 
