@@ -119,7 +119,8 @@ size_t encode3launch(uint3 dims,
                      int3 stride,
                      const Scalar *d_data,
                      Word *stream,
-                     const int maxbits)
+                     const int maxbits,
+                     cudaStream_t custream)
 {
 
   const int cuda_block_size = 128;
@@ -157,7 +158,7 @@ size_t encode3launch(uint3 dims,
   cudaEventRecord(start);
 #endif
 
-  cudaEncode<Scalar> <<<grid_size, block_size>>>
+  cudaEncode<Scalar> <<<grid_size, block_size, 0, custream>>>
     (maxbits,
      d_data,
      stream,
@@ -196,10 +197,11 @@ size_t encode3(uint3 dims,
               int3 stride,
               Scalar *d_data,
               Word *stream,
-              const int bits_per_block)
+              const int bits_per_block,
+              cudaStream_t custream)
 {
   std::cout << "Calling Encode3 from encode3.cuh "<< std::endl;
-  return encode3launch<Scalar>(dims, stride, d_data, stream, bits_per_block);
+  return encode3launch<Scalar>(dims, stride, d_data, stream, bits_per_block, custream);
 }
 
 }

@@ -136,7 +136,7 @@ size_t encode(uint dims[3], int3 stride, int bits_per_block, T *d_data, Word *d_
     s.y = stride.y; 
     s.z = stride.z; 
     uint3 ndims = make_uint3(dims[0], dims[1], dims[2]);
-    stream_size = cuZFP::encode3<T>(ndims, s, d_data, d_stream, bits_per_block); 
+    stream_size = cuZFP::encode3<T>(ndims, s, d_data, d_stream, bits_per_block, custream); 
   }
 
   errors.chk("Encode");
@@ -145,7 +145,7 @@ size_t encode(uint dims[3], int3 stride, int bits_per_block, T *d_data, Word *d_
 }
 
 template<typename T>
-size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *out)
+size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *out, cudaStream_t custream)
 {
 
   int d = 0;
@@ -507,7 +507,7 @@ cuda_decompress(zfp_stream *stream, zfp_field *field)
 
 // Exposing CUDA compress and decompress API
 
-size_t zfp_encode_gpu(zfp_stream *zpstream, zfp_field *field,
+size_t zfpEncodeGgpu(zfp_stream *zpstream, zfp_field *field,
                            ext_zfp_field *exfield)
 {
   uint dims[3];
@@ -559,7 +559,7 @@ size_t zfp_encode_gpu(zfp_stream *zpstream, zfp_field *field,
 
 }
 
-size_t zfp_decode_gpu(zfp_stream *zpstream, zfp_field *field,
+size_t zfpDecodeGgpu(zfp_stream *zpstream, zfp_field *field,
                     ext_zfp_field *exfield)
 {
   uint dims[3];
@@ -623,3 +623,120 @@ size_t zfp_decode_gpu(zfp_stream *zpstream, zfp_field *field,
   return(stream_size(zpstream->stream)); 
 }
 
+// CUDA compress and decompress API with Streams
+
+size_t zfpEncodeGpuStream(zfp_stream *zpstream, zfp_field *field,
+                          ext_zfp_field *exfield, cudaStream_t custream)
+{
+  uint dims[3];
+  dims[0] = field->nx;
+  dims[1] = field->ny;
+  dims[2] = field->nz;
+
+  int3 stride;  
+  stride.x = field->sx ? field->sx : 1;
+  stride.y = field->sy ? field->sy : field->nx;
+  stride.z = field->sz ? field->sz : field->nx * field->ny;
+
+  size_t stream_bytes = 0;
+  
+  if(field->type == zfp_type_float) {
+    float *local_data = (float*) exfield->device_data;
+    stream_bytes = internal::encode<float>(dims, stride, (int)zpstream->maxbits, 
+                  local_data, exfield->device_stream, custream);
+  }
+  else if(field->type == zfp_type_double) {
+    double* local_data = (double*) exfield->device_data;
+    stream_bytes = internal::encode<double>(dims, stride, (int)zpstream->maxbits, 
+                   local_data, exfield->device_stream, custream);
+  }
+  else if(field->type == zfp_type_int32) {
+    int * local_data = (int*) exfield->device_data;
+    stream_bytes = internal::encode<int>(dims, stride, (int)zpstream->maxbits, 
+                   local_data, exfield->device_stream, custream);
+  }
+  else if(field->type == zfp_type_int64) {
+    long long int * local_data = (long long int*) exfield->device_data;
+    stream_bytes = internal::encode<long long int>(dims, stride, (int)zpstream->maxbits, 
+                   local_data, exfield->device_stream, custream);
+  }
+  else
+  {
+    std::cerr<<"Cannot decompress: type unknown\n";
+  }
+
+  // zfp wants to flush the stream.
+  // set bits to wsize because we already did that.
+  
+  size_t compressed_size = stream_bytes / sizeof(Word);
+  zpstream->stream->bits = wsize;
+  
+  // set stream pointer to end of stream
+  zpstream->stream->ptr = zpstream->stream->begin + compressed_size;
+  return stream_bytes;
+
+}
+
+size_t zfpDecodeGpuStream(zfp_stream *zpstream, zfp_field *field,
+                          ext_zfp_field *exfield, cudaStream_t custream)
+{
+  uint dims[3];
+  dims[0] = field->nx;
+  dims[1] = field->ny;
+  dims[2] = field->nz;
+
+  int3 stride;  
+  stride.x = field->sx ? field->sx : 1;
+  stride.y = field->sy ? field->sy : field->nx;
+  stride.z = field->sz ? field->sz : field->nx * field->ny;
+
+  size_t decoded_bytes = 0;
+  
+  if(field->type == zfp_type_float) {
+    float *local_data = (float*) exfield->device_data;
+    decoded_bytes = internal::decode<float>(dims, stride, (int)zpstream->maxbits, 
+                    exfield->device_stream, local_data, custream);
+    exfield->device_data = (void*) local_data;
+  }
+  else if(field->type == zfp_type_double) {
+    double* local_data = (double*) exfield->device_data;
+    decoded_bytes = internal::decode<double>(dims, stride, (int)zpstream->maxbits, 
+                    exfield->device_stream, local_data, custream);
+    exfield->device_data = (void*) local_data;
+  }
+  else if(field->type == zfp_type_int32) {
+    int * local_data = (int*) exfield->device_data;
+    decoded_bytes = internal::decode<int>(dims, stride, (int)zpstream->maxbits, 
+                   exfield->device_stream, local_data, custream);
+    exfield->device_data = (void*) local_data;
+  }
+  else if(field->type == zfp_type_int64) {
+    long long int * local_data = (long long int*) exfield->device_data;
+    decoded_bytes = internal::decode<long long int>(dims, stride, (int)zpstream->maxbits, 
+                   exfield->device_stream, local_data, custream);
+    exfield->device_data = (void*) local_data;
+  }
+  else
+  {
+    std::cerr<<"Cannot decompress: type unknown\n";
+  }
+   
+  size_t type_size = zfp_type_size(field->type);
+
+  size_t field_size = 1;
+  for(int i = 0; i < 3; ++i)
+  {
+    if(dims[i] != 0)
+    {
+      field_size *= dims[i];
+    }
+  }
+ 
+  // this is how zfp determins if this was a success
+  size_t words_read = decoded_bytes / sizeof(Word);
+  zpstream->stream->bits = wsize;
+  // set stream pointer to end of stream
+  zpstream->stream->ptr = zpstream->stream->begin + words_read;
+
+  return(stream_size(zpstream->stream)); 
+}

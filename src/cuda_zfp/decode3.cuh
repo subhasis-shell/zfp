@@ -110,7 +110,8 @@ size_t decode3launch(uint3 dims,
                      int3 stride,
                      Word *stream,
                      Scalar *d_data,
-                     uint maxbits)
+                     uint maxbits,
+                     cudaStream_t custream)
 {
   const int cuda_block_size = 128;
   dim3 block_size;
@@ -150,7 +151,7 @@ size_t decode3launch(uint3 dims,
   cudaEventRecord(start);
 #endif
 
-  cudaDecode3<Scalar, 64> << < grid_size, block_size >> >
+  cudaDecode3<Scalar, 64> <<< grid_size, block_size, 0, custream >>>
     (stream,
 		 d_data,
      dims,
@@ -184,9 +185,10 @@ size_t decode3(uint3 dims,
                int3 stride,
                Word  *stream,
                Scalar *d_data,
-               uint maxbits)
+               uint maxbits,
+               cudaStream_t custream)
 {
-	return decode3launch<Scalar>(dims, stride, stream, d_data, maxbits);
+	return decode3launch<Scalar>(dims, stride, stream, d_data, maxbits, custream);
 }
 
 } // namespace cuZFP
