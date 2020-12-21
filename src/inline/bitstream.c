@@ -100,6 +100,11 @@ The following assumptions and restrictions apply:
    caught.
 */
 
+#if defined(WITH_IPP)
+/*
+ * This source code file was modified with Intel(R) Integrated Performance Primitives library content
+ */
+#endif
 #include <limits.h>
 #include <stdlib.h>
 #include "streamstruct.h"

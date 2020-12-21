@@ -6,6 +6,10 @@
 #include "zfp/macros.h"
 #include "template/template.h"
 
+#if defined(WITH_IPP)
+#include <ippdc.h>
+#include <ipps.h>
+#endif
 /* public data ------------------------------------------------------------- */
 
 const uint zfp_codec_version = ZFP_CODEC;
@@ -63,12 +67,18 @@ is_reversible(const zfp_stream* zfp)
 #undef Scalar
 
 #define Scalar float
+#if defined (WITH_IPP)
+	#define IPP_OPTIMIZATION_ENABLED
+#endif
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
 #include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
+#if defined (WITH_IPP)
+	#undef IPP_OPTIMIZATION_ENABLED
+#endif
 #undef Scalar
 
 #define Scalar double
