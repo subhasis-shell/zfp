@@ -361,7 +361,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     {
       Ipp64u chunk_decompr_length;
       ippsDecodeZfpGetCompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
-      ippsDecodeZfpFlush_32f(pState);
+      ippsFree(pState);
       chunk_decompr_length = (size_t)((chunk_bit_lengths[chunk] + 7) >> 3);
       stream_set_eos(pBitStream, chunk_decompr_length);
     }
