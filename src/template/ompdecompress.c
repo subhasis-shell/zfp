@@ -327,31 +327,31 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
       if (nx - x < 4 || ny - y < 4 || nz - z < 4)
       {
         #if !defined(IPP_OPTIMIZATION_ENABLED)
-            _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+            _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, block_data, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
         #else
           if (!(REVERSIBLE(stream)))
           {
-            CopyFromPartialBlock((const Ipp32f *)p, sy, sz, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), pTmpBlock);
+            CopyFromPartialBlock((const Ipp32f *)block_data, sy, sz, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), pTmpBlock);
             ippsDecodeZfp444_32f(pTmpBlock, 4 * sizeof(Ipp32f), 4 * 4 * sizeof(Ipp32f), pState);
           }
           else
           {
-            _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+            _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, block_data, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
           }
         #endif
       }
       else
             {
         #if !defined(IPP_OPTIMIZATION_ENABLED)
-          _t2(zfp_decode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
+          _t2(zfp_decode_block_strided, Scalar, 3)(&s, block_data, sx, sy, sz);
         #else
           if (!(REVERSIBLE(stream)))
           {
-            ippsDecodeZfp444_32f((const Ipp32f *)p, srcBlockLineStep, srcBlockPlaneStep, pState);
+            ippsDecodeZfp444_32f((const Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep, pState);
           }
           else 
           {
-            _t2(zfp_decode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
+            _t2(zfp_decode_block_strided, Scalar, 3)(&s, block_data, sx, sy, sz);
           }
         #endif        
       }
