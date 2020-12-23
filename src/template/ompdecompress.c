@@ -347,7 +347,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         #else
           if (!(REVERSIBLE(stream)))
           {
-            ippsDecodeZfp444_32f(pState, (const Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep);
+            ippsDecodeZfp444_32f(pState, (Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep);
           }
           else 
           {
