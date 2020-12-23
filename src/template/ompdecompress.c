@@ -331,8 +331,8 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         #else
           if (!(REVERSIBLE(stream)))
           {
-            CopyFromPartialBlock((const Ipp32f *)block_data, sy, sz, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), pTmpBlock);
             ippsDecodeZfp444_32f(pTmpBlock, 4 * sizeof(Ipp32f), 4 * 4 * sizeof(Ipp32f), pState);
+            CopyToPartialBlock((Ipp32f *)block_data, sy, sz, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), (const Ipp32f*)pTmpBlock);
           }
           else
           {
@@ -347,7 +347,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         #else
           if (!(REVERSIBLE(stream)))
           {
-            ippsDecodeZfp444_32f((const Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep, pState);
+            ippsDecodeZfp444_32f(pState, (const Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep);
           }
           else 
           {
@@ -360,7 +360,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     if (!(REVERSIBLE(stream)) && pState != NULL)
     {
       Ipp64u chunk_decompr_length;
-      ippsDecodeZfpGetCompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
+      ippsDecodeZfpGetDecompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
       ippsFree(pState);
       chunk_decompr_length = (size_t)((chunk_bit_lengths[chunk] + 7) >> 3);
       stream_set_eos(pBitStream, chunk_decompr_length);
