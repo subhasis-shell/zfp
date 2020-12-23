@@ -202,6 +202,22 @@ _t2(decompress_strided_omp, Scalar, 2)(zfp_stream* stream, zfp_field* field)
   stream_read_bit(stream->stream);
 }
 
+/* same function as in serial decompression for enabling a copy (when non aligned blocks are there) */
+#if defined(IPP_OPTIMIZATION_ENABLED) && !defined(_SET_TMP_BLOCK_TO_)
+#define _SET_TMP_BLOCK_TO_
+static void CopyToPartialBlock(Ipp32f *pDst, int stepY, int stepZ, int sizeX, int sizeY, int sizeZ, const Ipp32f *pTmpBlock)
+{
+    int       x, y, z;
+    for(z = 0; z < sizeZ; z++)
+        for(y = 0; y < sizeY; y++)
+            for (x = 0; x < sizeX; x++)
+            {
+                int idx = x + stepY * y + stepZ * z;
+                pDst[idx] = pTmpBlock[x + 4 * y + 4 * 4 * z];
+            }
+}
+#endif
+
 /* decompress 3d strided array in parallel */
 static void
 _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
