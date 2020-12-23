@@ -360,7 +360,8 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     if (!(REVERSIBLE(stream)) && pState != NULL)
     {
       Ipp64u chunk_decompr_length;
-      ippsDecodeZfpGetDecompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
+      //ippsDecodeZfpGetDecompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
+      ippsDecodeZfpGetDecompressedSize_32f(pState, &chunk_bit_lengths[chunk]);
       ippsFree(pState);
       chunk_decompr_length = (size_t)((chunk_bit_lengths[chunk] + 7) >> 3);
       stream_set_eos(pBitStream, chunk_decompr_length);
