@@ -237,7 +237,9 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
   const uint by = (ny + 3) / 4;
   const uint bz = (nz + 3) / 4;
   const uint blocks = bx * by * bz;
-  uint index_granularity = 1;
+  uint index_granularity = 1; /* @aniruddha - does not support index granularity */
+
+  /* TODO: other zfp decompress modes except fixed precision + fixed accuracy */
   if (mode == zfp_mode_fixed_accuracy || mode == zfp_mode_fixed_precision) {
     if (!stream->index)
       return;
@@ -252,16 +254,48 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         return;
     }
   }
+
+  /* @aniruddha - chunk calculation is not the same as it was for ompcompression */
   const uint chunks = (blocks + index_granularity - 1) / index_granularity;
 
   /* allocate per-thread streams */
   bitstream** bs = decompress_init_par(stream, field, chunks, blocks);
-  if (!bs)
-    return;
+  // if (!bs)
+  //   return;
+
+#if defined (IPP_OPTIMIZATION_ENABLED)
+  IppDecodeZfpState_32f* pStates = NULL;
+  Ipp64u* chunk_bit_lengths = (Ipp64u*)malloc(sizeof(Ipp64u)* chunks);
+  int srcBlockLineStep = nx * sizeof(Ipp32f);
+  int srcBlockPlaneStep = ny * srcBlockLineStep;
+  uint min_bits, max_bits, max_prec;
+  int min_exp;
+  int sizeState = 0;
+  if (!(REVERSIBLE(stream)))
+  {
+    zfp_stream_params(stream, &min_bits, &max_bits, &max_prec, &min_exp);
+    ippsDecodeZfpGetStateSize_32f(&sizeState);
+    pStates = (IppDecodeZfpState_32f*)ippsMalloc_8u(sizeState * threads);
+  }
+#endif
 
   /* decompress chunks of blocks in parallel */
   int chunk;
+
+#if !defined (IPP_OPTIMIZATION_ENABLED)
   #pragma omp parallel for num_threads(threads)
+#else
+#pragma omp parallel num_threads(threads)
+{
+  bitstream *pBitStream = NULL;
+  IppDecodeZfpState_32f* pState = NULL;
+  Ipp32f pTmpBlock[64];
+  if (!(REVERSIBLE(stream)))
+  {
+    pState = (IppDecodeZfpState_32f*)((Ipp8u*)pStates + omp_get_thread_num() * sizeState);
+  }
+  #pragma omp for
+#endif
   for (chunk = 0; chunk < (int)chunks; chunk++) {
     /* determine range of block indices assigned to this thread */
     const uint bmin = chunk * index_granularity;
@@ -271,6 +305,15 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     /* set up thread-local bit stream */
     zfp_stream s = *stream;
     zfp_stream_set_bit_stream(&s, bs[chunk]);
+
+#if defined (IPP_OPTIMIZATION_ENABLED)
+    if (!(REVERSIBLE(stream)))
+    {
+      pBitStream = bs[chunk];
+      ippsDecodeZfpInitLong_32f((Ipp8u*)stream_data(pBitStream), stream_capacity(pBitStream), pState);
+      ippsDecodeZfpSet_32f(min_bits, max_bits, max_prec, min_exp, pState);
+    }
+#endif
 
     /* decode all blocks in the chunk sequentially */
     uint x, y, z;
@@ -282,11 +325,53 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
       z = 4 * (block / (bx * by));
       block_data = data + x * sx + y * sy + z * sz;
       if (nx - x < 4 || ny - y < 4 || nz - z < 4)
-        _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, block_data, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+      {
+        #if !defined(IPP_OPTIMIZATION_ENABLED)
+            _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+        #else
+          if (!(REVERSIBLE(stream)))
+          {
+            CopyFromPartialBlock((const Ipp32f *)p, sy, sz, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), pTmpBlock);
+            ippsDecodeZfp444_32f(pTmpBlock, 4 * sizeof(Ipp32f), 4 * 4 * sizeof(Ipp32f), pState);
+          }
+          else
+          {
+            _t2(zfp_decode_partial_block_strided, Scalar, 3)(&s, p, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), sx, sy, sz);
+          }
+        #endif
+      }
       else
-        _t2(zfp_decode_block_strided, Scalar, 3)(&s, block_data, sx, sy, sz);
+            {
+        #if !defined(IPP_OPTIMIZATION_ENABLED)
+          _t2(zfp_decode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
+        #else
+          if (!(REVERSIBLE(stream)))
+          {
+            ippsDecodeZfp444_32f((const Ipp32f *)p, srcBlockLineStep, srcBlockPlaneStep, pState);
+          }
+          else 
+          {
+            _t2(zfp_decode_block_strided, Scalar, 3)(&s, p, sx, sy, sz);
+          }
+        #endif        
+      }
+    } /* block loop ends */
+#if defined(IPP_OPTIMIZATION_ENABLED)
+    if (!(REVERSIBLE(stream)) && pState != NULL)
+    {
+      Ipp64u chunk_decompr_length;
+      ippsDecodeZfpGetCompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
+      ippsDecodeZfpFlush_32f(pState);
+      chunk_decompr_length = (size_t)((chunk_bit_lengths[chunk] + 7) >> 3);
+      stream_set_eos(pBitStream, chunk_decompr_length);
     }
-  }
+  #endif    
+  } /* chunk loop ends */
+#if defined (IPP_OPTIMIZATION_ENABLED)
+} /* The end of pragma omp parallel block */
+free(chunk_bit_lengths);
+ippsFree(pStates);
+#endif
   decompress_finish_par(bs, chunks);
   /* TODO: find a better solution
   this workaround reads a bit from the bitstream, because the bitstream pointer is checked to see if decompression was succesful */
