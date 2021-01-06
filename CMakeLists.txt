@@ -167,7 +167,7 @@ endif()
 # i.e. -fopenmp for compiling and -lgomp for linking, use -fomp for both
 # compiling and linking
 if (NOT MSVC)
-  set(OpenMP_C_LIBRARIES ${OpenMP_C_FLAGS})	  if(ZFP_WITH_OPENMP AND NOT OpenMP_C_LIBRARIES)
+  if(ZFP_WITH_OPENMP AND NOT OpenMP_C_LIBRARIES)
     set(OpenMP_C_LIBRARIES ${OpenMP_C_FLAGS})
   endif()
 endif()
