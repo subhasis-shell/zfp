@@ -292,7 +292,9 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
   Ipp32f pTmpBlock[64];
   if (!(REVERSIBLE(stream)))
   {
-    pState = (IppDecodeZfpState_32f*)((Ipp8u*)pStates + omp_get_thread_num() * sizeState);
+    //int bytesPerChunk = stream->maxbits >> 3;
+    int threadIndex = omp_get_thread_num();
+    pState = (IppDecodeZfpState_32f*)((Ipp8u*)pStates + threadIndex * sizeState);
   }
   #pragma omp for
 #endif
@@ -310,7 +312,11 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     if (!(REVERSIBLE(stream)))
     {
       pBitStream = bs[chunk];
-      ippsDecodeZfpInitLong_32f((Ipp8u*)stream_data(pBitStream), stream_capacity(pBitStream), pState);
+      int bytesPerChunk = (stream->maxbits >> 3) * index_granularity;
+      Ipp8u* pInData =(Ipp8u*)stream_data(stream->stream) + chunk * bytesPerChunk;
+      //Ipp8u* pInData =stream_data(pBitStream);
+      //int bytesPerChunk =stream_capacity(pBitStream);
+      ippsDecodeZfpInit_32f(pInData, bytesPerChunk, pState);
       ippsDecodeZfpSet_32f(min_bits, max_bits, max_prec, min_exp, pState);
     }
 #endif
@@ -318,6 +324,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
     /* decode all blocks in the chunk sequentially */
     uint x, y, z;
     Scalar * block_data;
+    IppStatus status;
 
     for (block = bmin; block < bmax; block++) {
       x = 4 * (block % bx);
@@ -331,7 +338,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         #else
           if (!(REVERSIBLE(stream)))
           {
-            ippsDecodeZfp444_32f(pTmpBlock, 4 * sizeof(Ipp32f), 4 * 4 * sizeof(Ipp32f), pState);
+            status = ippsDecodeZfp444_32f(pState, (Ipp32f*)pTmpBlock, 4 * sizeof(Ipp32f), 4 * 4 * sizeof(Ipp32f));
             CopyToPartialBlock((Ipp32f *)block_data, sy, sz, MIN(nx - x, 4u), MIN(ny - y, 4u), MIN(nz - z, 4u), (const Ipp32f*)pTmpBlock);
           }
           else
@@ -347,7 +354,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         #else
           if (!(REVERSIBLE(stream)))
           {
-            ippsDecodeZfp444_32f(pState, (Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep);
+            status = ippsDecodeZfp444_32f(pState, (Ipp32f *)block_data, srcBlockLineStep, srcBlockPlaneStep);
           }
           else 
           {
@@ -356,21 +363,21 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
         #endif        
       }
     } /* block loop ends */
-#if defined(IPP_OPTIMIZATION_ENABLED)
-    if (!(REVERSIBLE(stream)) && pState != NULL)
-    {
-      Ipp64u chunk_decompr_length;
-      //ippsDecodeZfpGetDecompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
-      ippsDecodeZfpGetDecompressedSize_32f(pState, &chunk_bit_lengths[chunk]);
-      ippsFree(pState);
-      chunk_decompr_length = (size_t)((chunk_bit_lengths[chunk] + 7) >> 3);
-      stream_set_eos(pBitStream, chunk_decompr_length);
-    }
-  #endif    
+// #if defined(IPP_OPTIMIZATION_ENABLED)
+//     if (!(REVERSIBLE(stream)) && pState != NULL)
+//     {
+//       Ipp64u chunk_decompr_length;
+//       //ippsDecodeZfpGetDecompressedBitSize_32f(pState, &chunk_bit_lengths[chunk]);
+//       ippsDecodeZfpGetDecompressedSize_32f(pState, &chunk_bit_lengths[chunk]);
+//       ippsFree(pState);
+//       chunk_decompr_length = (size_t)((chunk_bit_lengths[chunk] + 7) >> 3);
+//       stream_set_eos(pBitStream, chunk_decompr_length);
+//     }
+// #endif    
   } /* chunk loop ends */
 #if defined (IPP_OPTIMIZATION_ENABLED)
 } /* The end of pragma omp parallel block */
-free(chunk_bit_lengths);
+//free(chunk_bit_lengths);
 ippsFree(pStates);
 #endif
   decompress_finish_par(bs, chunks);

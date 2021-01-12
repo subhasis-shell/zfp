@@ -462,4 +462,13 @@ stream_clone(const bitstream* s)
   return c;
 }
 
+#if defined(WITH_IPP)
+inline_
+void stream_set_eos(bitstream* s, size_t byte_len)
+{
+    if (s)
+        s->ptr = s->begin + byte_len / sizeof(word);
+}
+#endif
+
 #undef unused_
