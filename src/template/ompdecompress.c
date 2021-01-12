@@ -237,7 +237,7 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
   const uint by = (ny + 3) / 4;
   const uint bz = (nz + 3) / 4;
   const uint blocks = bx * by * bz;
-  uint index_granularity = 1; /* @aniruddha - does not support index granularity */
+  uint index_granularity = 16384; /* @aniruddha - does not support index granularity */
 
   /* TODO: other zfp decompress modes except fixed precision + fixed accuracy */
   if (mode == zfp_mode_fixed_accuracy || mode == zfp_mode_fixed_precision) {
@@ -266,8 +266,8 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
 #if defined (IPP_OPTIMIZATION_ENABLED)
   IppDecodeZfpState_32f* pStates = NULL;
   Ipp64u* chunk_bit_lengths = (Ipp64u*)malloc(sizeof(Ipp64u)* chunks);
-  int srcBlockLineStep = nx * sizeof(Ipp32f);
-  int srcBlockPlaneStep = ny * srcBlockLineStep;
+  int srcBlockLineStep = sy * sizeof(Ipp32f);
+  int srcBlockPlaneStep = sz * srcBlockLineStep;
   uint min_bits, max_bits, max_prec;
   int min_exp;
   int sizeState = 0;
