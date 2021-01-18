@@ -318,13 +318,13 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
       //int bytesPerChunk =stream_capacity(pBitStream);
       ippsDecodeZfpInit_32f(pInData, bytesPerChunk, pState);
       ippsDecodeZfpSet_32f(min_bits, max_bits, max_prec, min_exp, pState);
+      IppStatus status;
     }
 #endif
 
     /* decode all blocks in the chunk sequentially */
     uint x, y, z;
     Scalar * block_data;
-    IppStatus status;
 
     for (block = bmin; block < bmax; block++) {
       x = 4 * (block % bx);
