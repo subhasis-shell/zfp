@@ -761,12 +761,23 @@ void zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims);
 /* CUDA zfp calls, decoupled memory management 
  * Added by: Subhasis, Shell */
 
-size_t zfp_encode_gpu(zfp_stream *stream, 
-                      zfp_field *field, 
-                      ext_zfp_field *add_field);
-size_t zfp_decode_gpu(zfp_stream *stream, 
+size_t zfpEncodeGpu(zfp_stream *stream, 
                     zfp_field *field, 
                     ext_zfp_field *add_field);
+
+size_t zfpEncodeGpuStream(zfp_stream *stream, 
+                    zfp_field *field, 
+                    ext_zfp_field *add_field,
+                    cudaStream_t custream);
+
+size_t zfpDecodeGpu(zfp_stream *stream, 
+                    zfp_field *field, 
+                    ext_zfp_field *add_field);
+
+size_t zfpDecodeGpuStream(zfp_stream *stream, 
+                    zfp_field *field,
+                    ext_zfp_field *add_field,
+                    cudaStream_t custream);
 
 #ifdef __cplusplus
 }
