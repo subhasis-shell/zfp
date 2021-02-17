@@ -66,6 +66,14 @@
 
 /* types ------------------------------------------------------------------- */
 
+/* Boolean constants */
+enum {
+  zfp_false = 0,         /* false */
+  zfp_true  = !zfp_false /* true */
+};
+
+typedef int zfp_bool; /* Boolean type */
+
 /* execution policy */
 typedef enum {
   zfp_exec_serial = 0, /* serial execution (default) */
