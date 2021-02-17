@@ -12,7 +12,10 @@
 // Include bitstream structure in bitstruct.h
 #include "streamstruct.h"
 #include "bitstream.h"
+
+#ifdef ZFP_WITH_CUDA
 #include "cudaerror_macro.h"
+#endif
 
 /* macros ------------------------------------------------------------------ */
 
