@@ -169,7 +169,6 @@ size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *o
     s.y = stride.y; 
     s.z = stride.z; 
 
-    std::cout << "Calling cuZFP decode3" << std::endl;
     stream_bytes = cuZFP::decode3<T>(dims, s, stream, out, bits_per_block); 
   }
   else if(d == 1)
