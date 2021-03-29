@@ -110,6 +110,9 @@ zfp_field_alloc()
     field->nx = field->ny = field->nz = field->nw = 0;
     field->sx = field->sy = field->sz = field->sw = 0;
     field->data = 0;
+
+    field->cuda_malloc_func = NULL;
+    field->cuda_free_func = NULL;
   }
   return field;
 }

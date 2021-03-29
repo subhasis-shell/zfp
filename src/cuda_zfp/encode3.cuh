@@ -166,9 +166,6 @@ size_t encode3launch(uint3 dims,
      zfp_pad,
      zfp_blocks);
   
-  // Added to make sure device synchronization happens
-  fprintf(stderr, "Getting device synchronized in cudaEncode\n");
-
   checkCudaError(cudaDeviceSynchronize());
 
 #ifdef CUDA_ZFP_RATE_PRINT
