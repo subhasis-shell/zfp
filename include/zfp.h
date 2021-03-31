@@ -147,6 +147,8 @@ typedef struct {
   cuda_malloc_function cuda_malloc_func;
   cuda_free_function cuda_free_func;
 
+  cudaStream_t cuStream;
+
 } zfp_field;
 
 /* Adding additional struct to pass params for GPU offloading */

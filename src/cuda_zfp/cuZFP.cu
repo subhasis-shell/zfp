@@ -504,22 +504,26 @@ cuda_compress(zfp_stream *stream, const zfp_field *field)
   if(field->type == zfp_type_float)
   {
     float* data = (float*) d_data;
-    stream_bytes = internal::encode<float>(dims, stride, (int)stream->maxbits, data, d_stream);
+    stream_bytes = internal::encodestream<float>(dims, stride, (int)stream->maxbits, 
+                                                 data, d_stream, field->cuStream);
   }
   else if(field->type == zfp_type_double)
   {
     double* data = (double*) d_data;
-    stream_bytes = internal::encode<double>(dims, stride, (int)stream->maxbits, data, d_stream);
+    stream_bytes = internal::encodestream<double>(dims, stride, (int)stream->maxbits, 
+                                                  data, d_stream, field->cuStream);
   }
   else if(field->type == zfp_type_int32)
   {
     int * data = (int*) d_data;
-    stream_bytes = internal::encode<int>(dims, stride, (int)stream->maxbits, data, d_stream);
+    stream_bytes = internal::encodestream<int>(dims, stride, (int)stream->maxbits, 
+                                               data, d_stream, field->cuStream);
   }
   else if(field->type == zfp_type_int64)
   {
     long long int * data = (long long int*) d_data;
-    stream_bytes = internal::encode<long long int>(dims, stride, (int)stream->maxbits, data, d_stream);
+    stream_bytes = internal::encodestream<long long int>(dims, stride, (int)stream->maxbits, 
+                                                         data, d_stream, field->cuStream);
   }
 
   internal::cleanup_device_ptr(field, stream->stream->begin, d_stream, stream_bytes, 0, field->type);
@@ -563,26 +567,30 @@ cuda_decompress(zfp_stream *stream, zfp_field *field)
   if(field->type == zfp_type_float)
   {
     float *data = (float*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, 
+                                           data, field->cuStream);
     d_data = (void*) data;
   }
 
   else if(field->type == zfp_type_double)
   {
     double *data = (double*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, 
+                                           data, field->cuStream);
     d_data = (void*) data;
   }
   else if(field->type == zfp_type_int32)
   {
     int *data = (int*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, 
+                                           data, field->cuStream);
     d_data = (void*) data;
   }
   else if(field->type == zfp_type_int64)
   {
     long long int *data = (long long int*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, 
+                                           data, field->cuStream);
     d_data = (void*) data;
   }
   else
