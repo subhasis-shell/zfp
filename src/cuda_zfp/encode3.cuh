@@ -274,7 +274,6 @@ size_t encode3(uint3 dims,
               Word *stream,
               const int bits_per_block)
 {
-  std::cout << "Calling Encode3 from encode3.cuh "<< std::endl;
   return encode3launch<Scalar>(dims, stride, d_data, stream, bits_per_block);
 }
 
@@ -288,7 +287,6 @@ size_t encode3stream(uint3 dims,
               const int bits_per_block,
               cudaStream_t custream)
 {
-  std::cout << "Calling Encode3 from encode3.cuh "<< std::endl;
   return encode3launchstream<Scalar>(dims, stride, d_data, stream, bits_per_block, custream);
 }
 

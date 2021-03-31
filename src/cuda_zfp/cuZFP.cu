@@ -265,7 +265,6 @@ size_t decodestream(uint ndims[3], int3 stride, int bits_per_block, Word *stream
     s.y = stride.y; 
     s.z = stride.z; 
 
-    std::cout << "Calling cuZFP decode3 CUDA stream" << std::endl;
     stream_bytes = cuZFP::decode3stream<T>(dims, s, stream, out, bits_per_block, custream); 
   }
   else 
