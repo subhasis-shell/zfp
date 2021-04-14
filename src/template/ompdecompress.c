@@ -224,8 +224,6 @@ static void CopyToPartialBlock(Ipp32f *pDst, int stepY, int stepZ, int sizeX, in
 static void
 _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
 {
-  printf("i am here\n");
-  static int verbose = 1;
   Scalar* data = (Scalar*)field->data;
   const uint nx = field->nx;
   const uint ny = field->ny;
@@ -266,16 +264,6 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
   bitstream** bs = decompress_init_par(stream, field, chunks, blocks);
   // if (!bs)
   //   return;
-
-  if (verbose)
-  {
-    printf("OpenMP ZFP DeCompress\n");
-    printf("Chunks %i\t Threads %i\n", chunks, threads);
-#if defined (IPP_OPTIMIZATION_ENABLED)
-  printf("IPP OPTIMIZATION_ENABLED\n");
-#endif
-    verbose = 0;
-  }
 
 #if defined (IPP_OPTIMIZATION_ENABLED)
   IppDecodeZfpState_32f* pStates = NULL;

@@ -230,7 +230,6 @@ _t2(compress_strided_omp, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
   size_t bz = (nz + 3) / 4;
   size_t blocks = bx * by * bz;
   size_t chunks = chunk_count_omp(stream, blocks, threads);
-  int chunk;
 
   /* allocate per-thread streams */
   bitstream** bs = compress_init_par(stream, field, chunks, blocks);
@@ -255,7 +254,6 @@ _t2(compress_strided_omp, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
 #endif
 
   /* compress chunks of blocks in parallel */
-  int chunk;
 #if !defined (IPP_OPTIMIZATION_ENABLED)
   #pragma omp parallel for num_threads(threads)
 #else
@@ -270,7 +268,7 @@ _t2(compress_strided_omp, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
     }
   #pragma omp for
 #endif
-  for (chunk = 0; chunk < (int)chunks; chunk++) {
+  for (int chunk = 0; chunk < (int)chunks; chunk++) {
     /* determine range of block indices assigned to this thread */
     size_t bmin = chunk_offset(blocks, chunks, chunk + 0);
     size_t bmax = chunk_offset(blocks, chunks, chunk + 1);
