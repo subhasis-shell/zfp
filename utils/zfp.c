@@ -6,7 +6,9 @@
 #include <string.h>
 #include <stdbool.h>
 
+#ifdef ZFP_WITH_CUDA
 #include <cuda_runtime.h>
+#endif
 
 #include "zfp.h"
 #include "zfp/macros.h"
@@ -409,7 +411,7 @@ int main(int argc, char* argv[])
     rawsize = typesize * count;
   
     if(exec == zfp_exec_cuda) {
-#if ZFP_WITH_CUDA
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &raw_indata_ptr, rawsize);
       if(code != cudaSuccess) {
         fprintf(stderr, "Cuda Assert: %s %s %d\n",
@@ -464,7 +466,7 @@ int main(int argc, char* argv[])
 
 
     if(exec == zfp_exec_cuda) {
-#if ZFP_WITH_CUDA
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, compressed_bufsize);
       if(code != cudaSuccess) {
         fprintf(stderr, "Cuda Assert: %s %s %d\n",
@@ -571,7 +573,7 @@ int main(int argc, char* argv[])
     }
 
     if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
-#if ZFP_WITH_CUDA
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, 
                                         compressed_bufsize);
       if(code != cudaSuccess) {
@@ -698,7 +700,7 @@ int main(int argc, char* argv[])
     rawsize = typesize * count;
     
     if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
-#if ZFP_WITH_CUDA
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &fo, rawsize);
       if(code != cudaSuccess) {
         fprintf(stderr, "Cuda Assert: %s %s %d\n",
@@ -789,7 +791,7 @@ int main(int argc, char* argv[])
   /* free allocated storage */
  
   if(zfp->exec.policy == zfp_exec_cuda) {
-#if ZFP_WITH_CUDA
+#ifdef ZFP_WITH_CUDA
     checkCudaError(cudaFreeHost(raw_indata_ptr));
     checkCudaError(cudaFreeHost(host_cuda_ptr));
     checkCudaError(cudaFreeHost(fo));
