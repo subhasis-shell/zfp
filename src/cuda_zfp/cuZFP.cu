@@ -541,7 +541,7 @@ cuda_decompress(zfp_stream *stream, zfp_field *field)
 
 // Exposing CUDA compress and decompress API
 
-size_t zfp_encode_gpu(zfp_stream *zpstream, zfp_field *field,
+size_t zfpEncodeGpu(zfp_stream *zpstream, zfp_field *field,
                            ext_zfp_field *exfield)
 {
   uint dims[3];
@@ -593,7 +593,7 @@ size_t zfp_encode_gpu(zfp_stream *zpstream, zfp_field *field,
 
 }
 
-size_t zfp_decode_gpu(zfp_stream *zpstream, zfp_field *field,
+size_t zfpDecodeGpu(zfp_stream *zpstream, zfp_field *field,
                     ext_zfp_field *exfield)
 {
   uint dims[3];
