@@ -12,7 +12,10 @@
 // Include bitstream structure in bitstruct.h
 #include "streamstruct.h"
 #include "bitstream.h"
+
+#ifdef ZFP_WITH_CUDA
 #include "cudaerror_macro.h"
+#endif
 
 /* macros ------------------------------------------------------------------ */
 
@@ -65,6 +68,14 @@
 #define ZFP_MODE_SHORT_MAX  ((1u << ZFP_MODE_SHORT_BITS) - 2)
 
 /* types ------------------------------------------------------------------- */
+
+/* Boolean constants */
+enum {
+  zfp_false = 0,         /* false */
+  zfp_true  = !zfp_false /* true */
+};
+
+typedef int zfp_bool; /* Boolean type */
 
 /* execution policy */
 typedef enum {

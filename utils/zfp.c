@@ -6,7 +6,9 @@
 #include <string.h>
 #include <stdbool.h>
 
+#ifdef ZFP_WITH_CUDA
 #include <cuda_runtime.h>
+#endif
 
 #include "zfp.h"
 #include "zfp/macros.h"
@@ -407,16 +409,22 @@ int main(int argc, char* argv[])
       return EXIT_FAILURE;
     }
     rawsize = typesize * count;
-    
+  
     if(exec == zfp_exec_cuda) {
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &raw_indata_ptr, rawsize);
       if(code != cudaSuccess) {
         fprintf(stderr, "Cuda Assert: %s %s %d\n",
                         cudaGetErrorString(code), __FILE__, __LINE__);
         exit(code);
       }
+#else
+      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
+      return EXIT_FAILURE;
+#endif
     }
-    else { // CPU execution
+    else 
+    { // CPU execution
       raw_indata_ptr = malloc(rawsize);
     }
 
@@ -458,6 +466,7 @@ int main(int argc, char* argv[])
 
 
     if(exec == zfp_exec_cuda) {
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, compressed_bufsize);
       if(code != cudaSuccess) {
         fprintf(stderr, "Cuda Assert: %s %s %d\n",
@@ -466,6 +475,10 @@ int main(int argc, char* argv[])
       }
       memcpy(host_cuda_ptr, compressed_buffer_ptr, compressed_bufsize);
       stream = stream_open(host_cuda_ptr, compressed_bufsize);
+#else
+      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
+      return EXIT_FAILURE;
+#endif
     }
     else {
       /* associate bit stream with buffer */
@@ -560,6 +573,7 @@ int main(int argc, char* argv[])
     }
 
     if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, 
                                         compressed_bufsize);
       if(code != cudaSuccess) {
@@ -569,6 +583,10 @@ int main(int argc, char* argv[])
       }
       /* associate allocated memory buffer to stream */
       stream = stream_open(host_cuda_ptr, compressed_bufsize);
+#else
+      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
+      return EXIT_FAILURE;
+#endif 
     }
     else { // CPU exec mode
       compressed_buffer_ptr = malloc(compressed_bufsize);
@@ -682,12 +700,17 @@ int main(int argc, char* argv[])
     rawsize = typesize * count;
     
     if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
+#ifdef ZFP_WITH_CUDA
       cudaError_t code = cudaMallocHost((void**) &fo, rawsize);
       if(code != cudaSuccess) {
         fprintf(stderr, "Cuda Assert: %s %s %d\n",
                         cudaGetErrorString(code), __FILE__, __LINE__);
         exit(code);
       }
+#else
+      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
+      return EXIT_FAILURE;
+#endif
     }
     else { // CPU execution
       fo = malloc(rawsize);
@@ -768,9 +791,14 @@ int main(int argc, char* argv[])
   /* free allocated storage */
  
   if(zfp->exec.policy == zfp_exec_cuda) {
+#ifdef ZFP_WITH_CUDA
     checkCudaError(cudaFreeHost(raw_indata_ptr));
     checkCudaError(cudaFreeHost(host_cuda_ptr));
     checkCudaError(cudaFreeHost(fo));
+#else 
+    fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
+    return EXIT_FAILURE;
+#endif
   }
   else {
     free(raw_indata_ptr);
