@@ -153,10 +153,12 @@ typedef struct {
 
 /* Adding additional struct to pass params for GPU offloading */
 
+/*
 typedef struct {
   unsigned long long  *device_stream;  // compressed stream on device
   void *device_data;  // Uncompressed data on device
 } ext_zfp_field;
+*/
 
 #ifdef __cplusplus
 extern "C" {
@@ -771,22 +773,12 @@ void zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims);
 /* CUDA zfp calls, decoupled memory management 
  * Added by: Subhasis, Shell */
 
-size_t zfpEncodeGpu(zfp_stream *stream, 
-                    zfp_field *field, 
-                    ext_zfp_field *add_field);
-
 size_t zfpEncodeGpuStream(zfp_stream *stream, 
                     zfp_field *field, 
-                    ext_zfp_field *add_field,
                     cudaStream_t custream);
-
-size_t zfpDecodeGpu(zfp_stream *stream, 
-                    zfp_field *field, 
-                    ext_zfp_field *add_field);
 
 size_t zfpDecodeGpuStream(zfp_stream *stream, 
                     zfp_field *field,
-                    ext_zfp_field *add_field,
                     cudaStream_t custream);
 
 #ifdef __cplusplus
