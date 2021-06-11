@@ -287,12 +287,7 @@ Word *setup_device_stream_compress(zfp_stream *stream, const zfp_field *field)
   Word *d_stream = NULL;
   size_t max_size = zfp_stream_maximum_size(stream, field);
    
-  if (field->cuda_malloc_func) {
-    checkCudaError(field->cuda_malloc_func((void**) &d_stream, max_size));
-  }
-  else {
-    checkCudaError(cudaMalloc(&d_stream, max_size));
-  }
+  checkCudaError(cudaMalloc(&d_stream, max_size));
 
   // fprintf(stderr, "Compress - device stream - place compressed data = %p\n",
   //        d_stream);
@@ -313,12 +308,8 @@ Word *setup_device_stream_decompress(zfp_stream *stream,const zfp_field *field)
   Word *d_stream = NULL;
   //TODO: change maximum_size to compressed stream size
   size_t size = zfp_stream_maximum_size(stream, field);
-  if (field->cuda_malloc_func) {
-    checkCudaError(field->cuda_malloc_func((void**) &d_stream, size));
-  }
-  else {
-    checkCudaError(cudaMalloc(&d_stream, size));
-  }
+ 
+  checkCudaError(cudaMalloc(&d_stream, size));
   
   // fprintf(stderr, "Print from cuZFP = size = %d, dest addr = %p, address src comp = %p\n",
   //        size, d_stream, stream->stream->begin);
@@ -390,12 +381,7 @@ void *setup_device_field_compress(const zfp_field *field, const int3 &stride, lo
   
   if(contig)
   {
-     if (field->cuda_malloc_func) {
-       checkCudaError(field->cuda_malloc_func((void**) &d_data, field_bytes));
-     }
-     else {
-       checkCudaError(cudaMalloc(&d_data, field_bytes));
-     }
+    checkCudaError(cudaMalloc(&d_data, field_bytes));
     checkCudaError(cudaMemcpy(d_data, host_ptr, field_bytes, cudaMemcpyHostToDevice));
   }
   
@@ -435,12 +421,7 @@ void *setup_device_field_decompress(const zfp_field *field, const int3 &stride, 
   {
     size_t field_bytes = type_size * field_size;
   
-    if (field->cuda_malloc_func) {
-      checkCudaError(field->cuda_malloc_func((void**) &d_data, field_bytes));
-    }
-    else {
-      checkCudaError(cudaMalloc(&d_data, field_bytes));
-    }
+    checkCudaError(cudaMalloc(&d_data, field_bytes));
   }
 
   return offset_void(field->type, d_data, -offset);
@@ -464,12 +445,7 @@ void cleanup_device_ptr(const zfp_field *field, void *orig_ptr, void *d_ptr,
     checkCudaError(cudaMemcpy(h_offset_ptr, d_offset_ptr, bytes, cudaMemcpyDeviceToHost));
   }
 
-   if (field && field->cuda_free_func) {
-     checkCudaError(field && field->cuda_free_func(d_offset_ptr));
-   }
-   else {
-     checkCudaError(cudaFree(d_offset_ptr));
-   }
+  checkCudaError(cudaFree(d_offset_ptr));
 
 }
 
@@ -681,7 +657,8 @@ size_t zfpEncodeGpuStream(zfp_stream *zpstream, zfp_field *field,
   
   // set stream pointer to end of stream
   zpstream->stream->ptr = zpstream->stream->begin + compressed_size;
-  return stream_bytes;
+
+  return(stream_size(zpstream->stream)); 
 
 }
 

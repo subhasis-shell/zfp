@@ -133,8 +133,10 @@ typedef enum {
   zfp_type_double = 4  /* double precision floating point */
 } zfp_type;
 
+/*
 typedef int (*cuda_malloc_function)(void** ptr, size_t size);
 typedef int (*cuda_free_function)(void* ptr);
+*/
 
 /* uncompressed array; use accessors to get/set members */
 typedef struct {
@@ -144,11 +146,10 @@ typedef struct {
   void* data;          /* pointer to array data */
 
   // call back func here
-  cuda_malloc_function cuda_malloc_func;
-  cuda_free_function cuda_free_func;
-
+//  cuda_malloc_function cuda_malloc_func;
+//  cuda_free_function cuda_free_func;
+  
   cudaStream_t cuStream;
-
 } zfp_field;
 
 /* Adding additional struct to pass params for GPU offloading */
