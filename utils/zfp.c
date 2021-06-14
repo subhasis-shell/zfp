@@ -7,6 +7,7 @@
 #include <stdbool.h>
 
 #include <cuda_runtime.h>
+#include "cudaerror_macro.h"
 
 #include "zfp.h"
 #include "zfp/macros.h"

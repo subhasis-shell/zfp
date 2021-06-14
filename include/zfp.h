@@ -12,7 +12,13 @@
 // Include bitstream structure in bitstruct.h
 #include "streamstruct.h"
 #include "bitstream.h"
+
+#ifdef ZFP_WITH_CUDA
+
+#include <cuda_runtime.h>
 #include "cudaerror_macro.h"
+
+#endif
 
 /* macros ------------------------------------------------------------------ */
 
@@ -145,11 +151,10 @@ typedef struct {
   int sx, sy, sz, sw;  /* strides (zero for contiguous array a[nw][nz][ny][nx]) */
   void* data;          /* pointer to array data */
 
-  // call back func here
-//  cuda_malloc_function cuda_malloc_func;
-//  cuda_free_function cuda_free_func;
-  
+#ifdef ZFP_WITH_CUDA
   cudaStream_t cuStream;
+#endif
+
 } zfp_field;
 
 /* Adding additional struct to pass params for GPU offloading */
@@ -773,7 +778,7 @@ void zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims);
 
 /* CUDA zfp calls, decoupled memory management 
  * Added by: Subhasis, Shell */
-
+#ifdef ZFP_WITH_CUDA
 size_t zfpEncodeGpuStream(zfp_stream *stream, 
                     zfp_field *field, 
                     cudaStream_t custream);
@@ -781,6 +786,7 @@ size_t zfpEncodeGpuStream(zfp_stream *stream,
 size_t zfpDecodeGpuStream(zfp_stream *stream, 
                     zfp_field *field,
                     cudaStream_t custream);
+#endif
 
 #ifdef __cplusplus
 }
