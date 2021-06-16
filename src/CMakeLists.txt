@@ -2,13 +2,13 @@ if(WITH_IPP)
 # This file is modified with Intel(R) Integrated Performance Primitives content
 endif()
 if(ZFP_WITH_CUDA)
-  SET(CMAKE_CXX_FLAGS_PREVIOUS ${CMAKE_CXX_FLAGS})
-  SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -fPIC" )
+  set(CMAKE_CXX_FLAGS_PREVIOUS ${CMAKE_CXX_FLAGS})
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -fPIC" )
 
   add_subdirectory(cuda_zfp)
   cuda_include_directories(${PROJECT_SOURCE_DIR}/include)
   cuda_wrap_srcs(zfp OBJ zfp_cuda_backend_obj cuda_zfp/cuZFP.cu)
-  SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_PREVIOUS})
+  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_PREVIOUS})
   add_definitions(-DZFP_WITH_CUDA)
 endif()
 
@@ -58,9 +58,7 @@ if(WITH_IPP)
 endif()
 
 if(ZFP_WITH_OPENMP)
-  target_compile_options(zfp PRIVATE ${OpenMP_C_FLAGS})
-  #target_link_libraries(zfp PRIVATE ${OpenMP_C_LIBRARIES})
-  target_link_libraries(zfp ${OpenMP_C_LIBRARIES})
+  target_link_libraries(zfp OpenMP::OpenMP_C)
 endif()
 
 if(HAVE_LIBM_MATH)

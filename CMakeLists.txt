@@ -1,8 +1,4 @@
-if(WIN32)
-  cmake_minimum_required(VERSION 3.4)
-else()
-  cmake_minimum_required(VERSION 3.1)
-endif()
+cmake_minimum_required(VERSION 3.9)
 
 if(WITH_IPP)
 # This file is modified with Intel(R) Integrated Performance Primitives content
