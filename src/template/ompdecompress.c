@@ -239,7 +239,12 @@ _t2(decompress_strided_omp, Scalar, 3)(zfp_stream* stream, zfp_field* field)
   const uint by = (ny + 3) / 4;
   const uint bz = (nz + 3) / 4;
   const uint blocks = bx * by * bz;
-  uint index_granularity = 16384; /* @aniruddha - does not support index granularity */
+
+#if defined(IPP_OPTIMIZATION_ENABLED)
+  uint index_granularity = 16384; /* @aniruddha - to given more chunks/thread - speedup Intel */
+#else
+  uint index_granularity = 1;
+#endif
 
   /* TODO: other zfp decompress modes except fixed precision + fixed accuracy */
   if (mode == zfp_mode_fixed_accuracy || mode == zfp_mode_fixed_precision) {
