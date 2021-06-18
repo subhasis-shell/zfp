@@ -598,6 +598,8 @@ cuda_decompress(zfp_stream *stream, zfp_field *field)
 
 // CUDA compress and decompress API with Streams
 
+#ifdef ZFP_WITH_CUDA
+
 size_t zfpEncodeGpuStream(zfp_stream *zpstream, zfp_field *field,
                           cudaStream_t custream)
 {
@@ -735,3 +737,4 @@ size_t zfpDecodeGpuStream(zfp_stream *zpstream, zfp_field *field,
 
   return(stream_size(zpstream->stream)); 
 }
+#endif
