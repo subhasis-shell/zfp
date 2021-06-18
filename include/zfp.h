@@ -9,12 +9,17 @@
 
 #include "zfp/types.h"
 #include "zfp/system.h"
+
 // Include bitstream structure in bitstruct.h
+
 #include "streamstruct.h"
 #include "bitstream.h"
 
 #ifdef ZFP_WITH_CUDA
+
+#include <cuda_runtime.h>
 #include "cudaerror_macro.h"
+
 #endif
 
 /* macros ------------------------------------------------------------------ */
@@ -144,9 +149,6 @@ typedef enum {
   zfp_type_double = 4  /* double precision floating point */
 } zfp_type;
 
-#define ZFP_HAS_CUSTOM_CUDA_MALLOC_FUNCTION
-typedef int (*cuda_malloc_function)(void** ptr, size_t size);
-typedef int (*cuda_free_function)(void* ptr);
 
 /* uncompressed array; use accessors to get/set members */
 typedef struct {
@@ -154,16 +156,21 @@ typedef struct {
   uint nx, ny, nz, nw; /* sizes (zero for unused dimensions) */
   int sx, sy, sz, sw;  /* strides (zero for contiguous array a[nw][nz][ny][nx]) */
   void* data;          /* pointer to array data */
-  cuda_malloc_function cuda_malloc_func;
-  cuda_free_function cuda_free_func;
+
+#ifdef ZFP_WITH_CUDA
+  cudaStream_t cuStream;
+#endif
+
 } zfp_field;
 
 /* Adding additional struct to pass params for GPU offloading */
 
+/*
 typedef struct {
   unsigned long long  *device_stream;  // compressed stream on device
   void *device_data;  // Uncompressed data on device
 } ext_zfp_field;
+*/
 
 #ifdef __cplusplus
 extern "C" {
@@ -777,13 +784,15 @@ void zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims);
 
 /* CUDA zfp calls, decoupled memory management 
  * Added by: Subhasis, Shell */
-
-size_t zfpEncodeGpu(zfp_stream *stream, 
-                      zfp_field *field, 
-                      ext_zfp_field *add_field);
-size_t zfpDecodeGpu(zfp_stream *stream, 
+#ifdef ZFP_WITH_CUDA
+size_t zfpEncodeGpuStream(zfp_stream *stream, 
                     zfp_field *field, 
-                    ext_zfp_field *add_field);
+                    cudaStream_t custream);
+
+size_t zfpDecodeGpuStream(zfp_stream *stream, 
+                    zfp_field *field,
+                    cudaStream_t custream);
+#endif
 
 #ifdef __cplusplus
 }

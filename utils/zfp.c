@@ -8,6 +8,7 @@
 
 #ifdef ZFP_WITH_CUDA
 #include <cuda_runtime.h>
+#include "cudaerror_macro.h"
 #endif
 
 #include "zfp.h"

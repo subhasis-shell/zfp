@@ -2,6 +2,7 @@
 #define cuZFP_h
 
 #include "zfp.h"
+#include "cudaerror_macro.h"
 
 #ifdef __cplusplus
 extern "C" {

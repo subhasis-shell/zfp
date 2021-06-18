@@ -3,6 +3,11 @@
 bin
 build*
 lib
+<<<<<<< HEAD
 tags
 opt
+=======
+opt
+tags
+>>>>>>> occa-merge-stream-v3
 run_ctags.sh

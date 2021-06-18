@@ -84,20 +84,19 @@ size_t calc_device_mem3d(const uint3 encoded_dims,
 
 dim3 get_max_grid_dims()
 {
-    dim3 grid_dims;
+  dim3 grid_dims;
 #if 0
-  cudaDeviceProp prop;
+  cudaDeviceProp prop; 
   int device = 0;
   cudaGetDeviceProperties(&prop, device);
-
   grid_dims.x = prop.maxGridSize[0];
   grid_dims.y = prop.maxGridSize[1];
   grid_dims.z = prop.maxGridSize[2];
-#else
+#endif
   grid_dims.x = 2147483647;
   grid_dims.y = 65535;
   grid_dims.z = 65535;
-#endif
+
   return grid_dims;
 }
 
