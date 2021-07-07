@@ -240,8 +240,8 @@ _t2(compress_strided_omp, Scalar, 3)(zfp_stream* stream, const zfp_field* field)
 
   IppEncodeZfpState_32f* pStates = NULL;
   Ipp64u* chunk_bit_lengths = (Ipp64u*)malloc(sizeof(Ipp64u)* chunks);
-  int srcBlockLineStep = nx * sizeof(Ipp32f);
-  int srcBlockPlaneStep = ny * srcBlockLineStep;
+  int srcBlockLineStep = sy * sizeof(Ipp32f);
+  int srcBlockPlaneStep = sz * sizeof(Ipp32f);
   uint min_bits, max_bits, max_prec;
   int min_exp;
   int sizeState = 0;
