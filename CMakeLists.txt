@@ -287,6 +287,7 @@ endif()
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY VALUE Release)
 endif()
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 #------------------------------------------------------------------------------#
 # Packaging
