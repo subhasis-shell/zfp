@@ -227,13 +227,14 @@ size_t encode3launchstream(uint3 dims,
 
   size_t stream_bytes = calc_device_mem3d(zfp_pad, maxbits);
   //ensure we start with 0s
-  cudaMemset(stream, 0, stream_bytes);
+  // cudaMemset(stream, 0, stream_bytes);
+  cudaMemsetAsync(stream, 0, stream_bytes, custream);
 
 #ifdef CUDA_ZFP_RATE_PRINT
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
-  cudaEventRecord(start);
+  cudaEventRecord(start, custream);
 #endif
 
   cudaEncode<Scalar> <<<grid_size, block_size, 0, custream>>>
@@ -248,9 +249,9 @@ size_t encode3launchstream(uint3 dims,
   // Synchronize streams from caller function 
 
 #ifdef CUDA_ZFP_RATE_PRINT
-  cudaEventRecord(stop);
-  cudaEventSynchronize(stop);
-  cudaStreamSynchronize(0);
+  cudaEventRecord(stop, custream);
+  cudaEventSynchronize(stop, custream);
+  cudaStreamSynchronize(custream);
 
   float miliseconds = 0;
   cudaEventElapsedTime(&miliseconds, start, stop);

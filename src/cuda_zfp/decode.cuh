@@ -112,7 +112,9 @@ inline __device__
 void decode_ints(BlockReader<Size> &reader, uint &max_bits, UInt *data)
 {
   const int intprec = get_precision<Scalar>();
+
   memset(data, 0, sizeof(UInt) * Size);
+
   uint64 x; 
   // maxprec = 64;
   const uint kmin = 0; //= intprec > maxprec ? intprec - maxprec : 0;
