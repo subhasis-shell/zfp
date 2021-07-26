@@ -69,7 +69,19 @@ is_reversible(const zfp_stream* zfp)
 #define Scalar float
 #if defined (WITH_IPP)
 	#define IPP_OPTIMIZATION_ENABLED
-#endif
+#if defined (WITH_IPP_AVX2)
+  /* Turn OFF AVX512 Instructions Explicitly */
+  #include <ipp.h>
+  #define PX_FM ( ippCPUID_MMX | ippCPUID_SSE | ippCPUID_SSE2 )
+  #define M7_FM ( PX_FM | ippCPUID_SSE3 )
+  #define U8_FM ( M7_FM | ippCPUID_SSSE3 )
+  #define N8_FM ( U8_FM | ippCPUID_MOVBE )
+  #define Y8_FM ( U8_FM | ippCPUID_SSE41 | ippCPUID_SSE42 | ippCPUID_AES | ippCPUID_CLMUL | ippCPUID_SHA )
+  #define E9_FM ( Y8_FM | ippCPUID_AVX | ippAVX_ENABLEDBYOS | ippCPUID_RDRAND | ippCPUID_F16C )
+  #define L9_FM ( E9_FM | ippCPUID_MOVBE | ippCPUID_AVX2 | ippCPUID_ADCOX | ippCPUID_RDSEED | ippCPUID_PREFETCHW )
+  #define CPU_AVX2 L9_FM
+#endif /* WITH_IPP_AVX2 */
+#endif /* WITH_IPP */
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
@@ -946,6 +958,9 @@ zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims)
 size_t
 zfp_compress(zfp_stream* zfp, const zfp_field* field)
 {
+#if defined (WITH_IPP_AVX2)
+  ippSetCpuFeatures(CPU_AVX2);
+#endif
   /* function table [execution][strided][dimensionality][scalar type] */
   void (*ftable[3][2][4][4])(zfp_stream*, const zfp_field*) = {
     /* serial */
@@ -1078,6 +1093,9 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
 size_t
 zfp_decompress(zfp_stream* zfp, zfp_field* field)
 {
+#if defined (WITH_IPP_AVX2)
+  ippSetCpuFeatures(CPU_AVX2);
+#endif
   /* function table [execution][strided][dimensionality][scalar type] */
   void (*ftable[3][2][4][4])(zfp_stream*, zfp_field*) = {
     /* serial */
