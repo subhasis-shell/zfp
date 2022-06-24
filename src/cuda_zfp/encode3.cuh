@@ -6,7 +6,6 @@
 #include "encode.cuh"
 #include "type_info.cuh"
 
-#define ZFP_3D_BLOCK_SIZE 64
 namespace cuZFP{
 
 template<typename Scalar> 
@@ -46,12 +45,15 @@ void gather3(Scalar* q, const Scalar* p, int sx, int sy, int sz)
         *q++ = *p;
 }
 
-template<class Scalar>
-__global__
-void 
-cudaEncode(const uint maxbits,
-           const Scalar* scalars,
+template <class Scalar, bool variable_rate>
+__global__ void
+cudaEncode(const uint minbits,
+           const int maxbits,
+           const int maxprec,
+           const int minexp,
+           const Scalar *scalars,
            Word *stream,
+           ushort *block_bits,
            const uint3 dims,
            const int3 stride,
            const uint3 padded_dims,
@@ -107,19 +109,25 @@ cudaEncode(const uint maxbits,
   {
     gather3(fblock, scalars + offset, stride.x, stride.y, stride.z);
   }
-  zfp_encode_block<Scalar, ZFP_3D_BLOCK_SIZE>(fblock, maxbits, block_idx, stream);  
-
+  uint bits = zfp_encode_block<Scalar, ZFP_3D_BLOCK_SIZE>(fblock, minbits, maxbits, maxprec,
+                                                          minexp, block_idx, stream);
+  if (variable_rate)
+    block_bits[block_idx] = bits;
 }
 
 //
 // Launch the encode kernel
 //
-template<class Scalar>
+template<class Scalar, bool variable_rate>
 size_t encode3launch(uint3 dims, 
                      int3 stride,
                      const Scalar *d_data,
                      Word *stream,
-                     const int maxbits)
+                     ushort *d_block_bits,
+                     const int minbits,
+                     const int maxbits,
+                     const int maxprec,
+                     const int minexp)
 {
 
   const int cuda_block_size = 128;
@@ -157,17 +165,18 @@ size_t encode3launch(uint3 dims,
   cudaEventRecord(start);
 #endif
 
-  cudaEncode<Scalar> <<<grid_size, block_size>>>
-    (maxbits,
+  cudaEncode<Scalar, variable_rate> <<<grid_size, block_size>>>
+    (minbits,
+     maxbits,
+     maxprec,
+     minexp,
      d_data,
      stream,
+     d_block_bits,
      dims,
      stride,
      zfp_pad,
      zfp_blocks);
-  
-  // Added to make sure device synchronization happens
-  // checkCudaError(cudaDeviceSynchronize());
 
 #ifdef CUDA_ZFP_RATE_PRINT
   cudaEventRecord(stop);
@@ -187,110 +196,22 @@ size_t encode3launch(uint3 dims,
   return stream_bytes;
 }
 
-
-// CUDA stream implementation of encode3launch-stream
-
-// Launch the encode kernel
-//
-template<class Scalar>
-size_t encode3launchstream(uint3 dims, 
-                     int3 stride,
-                     const Scalar *d_data,
-                     Word *stream,
-                     const int maxbits,
-                     cudaStream_t custream)
-{
-
-  const int cuda_block_size = 128;
-  dim3 block_size = dim3(cuda_block_size, 1, 1);
-
-  uint3 zfp_pad(dims); 
-  if(zfp_pad.x % 4 != 0) zfp_pad.x += 4 - dims.x % 4;
-  if(zfp_pad.y % 4 != 0) zfp_pad.y += 4 - dims.y % 4;
-  if(zfp_pad.z % 4 != 0) zfp_pad.z += 4 - dims.z % 4;
-
-  const uint zfp_blocks = (zfp_pad.x * zfp_pad.y * zfp_pad.z) / 64; 
-
-  //
-  // we need to ensure that we launch a multiple of the 
-  // cuda block size
-  //
-  int block_pad = 0; 
-  if(zfp_blocks % cuda_block_size != 0)
-  {
-    block_pad = cuda_block_size - zfp_blocks % cuda_block_size; 
-  }
-
-  size_t total_blocks = block_pad + zfp_blocks;
-
-  dim3 grid_size = calculate_grid_size(total_blocks, cuda_block_size);
-
-  size_t stream_bytes = calc_device_mem3d(zfp_pad, maxbits);
-  //ensure we start with 0s
-  // cudaMemset(stream, 0, stream_bytes);
-  cudaMemsetAsync(stream, 0, stream_bytes, custream);
-
-#ifdef CUDA_ZFP_RATE_PRINT
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start);
-  cudaEventCreate(&stop);
-  cudaEventRecord(start, custream);
-#endif
-
-  cudaEncode<Scalar> <<<grid_size, block_size, 0, custream>>>
-    (maxbits,
-     d_data,
-     stream,
-     dims,
-     stride,
-     zfp_pad,
-     zfp_blocks);
-  
-  // Synchronize streams from caller function 
-
-#ifdef CUDA_ZFP_RATE_PRINT
-  cudaEventRecord(stop, custream);
-  cudaEventSynchronize(stop, custream);
-  cudaStreamSynchronize(custream);
-
-  float miliseconds = 0;
-  cudaEventElapsedTime(&miliseconds, start, stop);
-  float seconds = miliseconds / 1000.f;
-  float rate = (float(dims.x * dims.y * dims.z) * sizeof(Scalar) ) / seconds;
-  rate /= 1024.f;
-  rate /= 1024.f;
-  rate /= 1024.f;
-  printf("Encode elapsed time: %.5f (s)\n", seconds);
-  printf("# encode3 rate: %.2f (GB / sec) \n", rate);
-#endif
-  return stream_bytes;
-}
-
 //
 // Just pass the raw pointer to the "real" encode
 //
-template<class Scalar>
-size_t encode3(uint3 dims, 
+template<class Scalar, bool variable_rate>
+size_t encode(uint3 dims, 
               int3 stride,
               Scalar *d_data,
               Word *stream,
-              const int bits_per_block)
+              ushort *d_block_bits,
+              const int minbits,
+              const int maxbits,
+              const int maxprec,
+              const int minexp)
 {
-  return encode3launch<Scalar>(dims, stride, d_data, stream, bits_per_block);
+  return encode3launch<Scalar, variable_rate>(dims, stride, d_data, stream, d_block_bits,
+                                              minbits, maxbits, maxprec, minexp);
 }
-
-// CUDA stream implementation of encode3
-
-template<class Scalar>
-size_t encode3stream(uint3 dims, 
-              int3 stride,
-              Scalar *d_data,
-              Word *stream,
-              const int bits_per_block,
-              cudaStream_t custream)
-{
-  return encode3launchstream<Scalar>(dims, stride, d_data, stream, bits_per_block, custream);
-}
-
 }
 #endif

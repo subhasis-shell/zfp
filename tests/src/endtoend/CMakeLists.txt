@@ -9,6 +9,7 @@ function(zfp_add_test dims type bits)
       target_link_libraries(${serial_test_name} m)
     endif()
 
+    target_compile_definitions(${serial_test_name} PRIVATE ${zfp_private_defs})
     if(PRINT_CHECKSUMS)
       target_compile_definitions(${serial_test_name} PUBLIC PRINT_CHECKSUMS)
     endif()
@@ -20,6 +21,7 @@ function(zfp_add_test dims type bits)
     set(omp_test_name testZfpOmp${dims}d${type})
     add_executable(${omp_test_name} ${omp_test_name}.c)
     target_compile_options(${omp_test_name} PRIVATE ${OpenMP_C_FLAGS})
+    target_compile_definitions(${omp_test_name} PRIVATE ${zfp_private_defs})
     target_link_libraries(${omp_test_name}
       cmocka zfp zfpHashLib genSmoothRandNumsLib stridedOperationsLib
       zfpChecksumsLib zfpTimerLib zfpCompressionParamsLib
@@ -37,6 +39,7 @@ function(zfp_add_test dims type bits)
 
       set(cuda_test_name testZfpCuda${dims}d${type})
       add_executable(${cuda_test_name} ${cuda_test_name}.c)
+      target_compile_definitions(${cuda_test_name} PRIVATE ${zfp_private_defs})
       target_link_libraries(${cuda_test_name}
         cmocka zfp zfpHashLib genSmoothRandNumsLib stridedOperationsLib
         zfpChecksumsLib zfpTimerLib zfpCompressionParamsLib)
@@ -45,6 +48,20 @@ function(zfp_add_test dims type bits)
       endif()
       add_test(NAME ${cuda_test_name} COMMAND ${cuda_test_name})
       set_property(TEST ${cuda_test_name} PROPERTY RUN_SERIAL TRUE)
+    endif()
+    if(ZFP_WITH_HIP AND (${dims} LESS 4))
+      add_definitions(-DZFP_WITH_HIP)
+
+      set(hip_test_name testZfpHip${dims}d${type})
+      add_executable(${hip_test_name} ${hip_test_name}.c)
+      target_link_libraries(${hip_test_name}
+        cmocka zfp zfpHashLib genSmoothRandNumsLib stridedOperationsLib
+        zfpChecksumsLib zfpTimerLib zfpCompressionParamsLib)
+      if(HAVE_LIBM_MATH)
+        target_link_libraries(${hip_test_name} m)
+      endif()
+      add_test(NAME ${hip_test_name} COMMAND ${hip_test_name})
+      set_property(TEST ${hip_test_name} PROPERTY RUN_SERIAL TRUE)
     endif()
   endif()
 endfunction()

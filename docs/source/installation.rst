@@ -84,7 +84,7 @@ command-line utility.  To enable OpenMP parallel compression, type::
 
 .. note::
   GNU builds expose only limited functionality of |zfp|.  For instance,
-  CUDA and Python support are not included.  For full functionality,
+  CUDA, HIP, and Python support are not included.  For full functionality,
   build |zfp| using CMake.
 
 
@@ -128,16 +128,19 @@ or using GNU make
 
 Regardless of the settings below, |libzfp| will always be built.
 
+
 .. c:macro:: BUILD_ALL
 
   Build all subdirectories; enable all options (except
   :c:macro:`BUILD_SHARED_LIBS`).
   Default: off.
 
+
 .. c:macro:: BUILD_CFP
 
   Build |libcfp| for C bindings to compressed arrays.
   Default: off.
+
 
 .. c:macro:: BUILD_ZFPY
 
@@ -154,6 +157,7 @@ Regardless of the settings below, |libzfp| will always be built.
   CMake default: off.
   GNU make default: off and ignored.
 
+
 .. c:macro:: BUILD_ZFORP
 
   Build |libzforp| for Fortran bindings to the C API.  Requires Fortran
@@ -165,21 +169,25 @@ Regardless of the settings below, |libzfp| will always be built.
 
   Default: off.
 
+
 .. c:macro:: BUILD_UTILITIES
 
   Build |zfpcmd| command-line utility for compressing binary files.
   Default: on.
+
 
 .. c:macro:: BUILD_EXAMPLES
 
   Build code examples.
   Default: off.
 
+
 .. c:macro:: BUILD_TESTING
 
   Build |testzfp| and (when on the GitHub
   `develop branch <https://github.com/LLNL/zfp/tree/develop>`_) unit tests.
   Default: on.
+
 
 .. c:macro:: BUILD_SHARED_LIBS
 
@@ -194,6 +202,7 @@ Regardless of the settings below, |libzfp| will always be built.
    single: Configuration
 .. _config:
 
+
 Configuration
 -------------
 
@@ -202,6 +211,7 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
 ::
 
     cmake -DZFP_WITH_OPENMP=OFF ..
+
 
 .. c:macro:: ZFP_INT64
 .. c:macro:: ZFP_INT64_SUFFIX
@@ -216,6 +226,7 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   Defaults: :code:`long int`, :code:`l`, :code:`unsigned long int`, and
   :code:`ul`, respectively.
 
+
 .. c:macro:: ZFP_WITH_OPENMP
 
   CMake and GNU make macro for enabling or disabling OpenMP support.  CMake
@@ -227,18 +238,31 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   CMake default: on.
   GNU make default: off.
 
+
 .. c:macro:: ZFP_WITH_CUDA
 
-  CMake macro for enabling or disabling CUDA support for
-  GPU compression and decompression.  When enabled, CUDA and a compatible
-  host compiler must be installed.  For a full list of compatible compilers,
-  please consult the
+  CMake macro for enabling or disabling CUDA support for parallel compression
+  and decompression on NVIDIA GPUs.  When enabled, CUDA and a compatible host
+  compiler must be installed.  For a full list of compatible compilers, please
+  consult the
   `NVIDIA documentation <https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/>`_.
-  If a CUDA installation is in the user's path, it will be
-  automatically found by CMake.  Alternatively, the CUDA binary directory 
-  can be specified using the :envvar:`CUDA_BIN_DIR` environment variable.
+  If a CUDA installation is in the user's path, it will be automatically found
+  by CMake.  Alternatively, the CUDA binary directory can be specified using
+  the :envvar:`CUDA_BIN_DIR` environment variable.
   CMake default: off.
   GNU make default: off and ignored.
+
+
+.. c:macro:: ZFP_WITH_HIP
+
+  CMake macro for enabling or disabling HIP support for parallel compression
+  and decompression on AMD GPUs.  The :envvar:`HIP_PATH` environment variable
+  can be used to point to the root directory of the HIP compiler.  See the
+  `HIP Porting Guide <https://rocmdocs.amd.com/en/latest/Programming_Guides/HIP-porting-guide.html>`_
+  for additional details.
+  CMake default: off.
+  GNU make default: off and ignored.
+
 
 .. c:macro:: ZFP_WITH_ALIGNED_ALLOC
 
@@ -246,11 +270,13 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   on hardware cache lines.
   Default: undefined/off.
 
+
 .. c:macro:: ZFP_WITH_CACHE_TWOWAY
 
   Use a two-way skew-associative rather than direct-mapped cache.  This
   incurs some overhead that may be offset by better cache utilization.
   Default: undefined/off.
+
 
 .. c:macro:: ZFP_WITH_CACHE_FAST_HASH
 
@@ -258,11 +284,13 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   lead to more collisions.
   Default: undefined/off.
 
+
 .. c:macro:: ZFP_WITH_CACHE_PROFILE
 
   Enable cache profiling to gather and print statistics on cache hit and miss
   rates.
   Default: undefined/off.
+
 
 .. c:macro:: BIT_STREAM_WORD_TYPE
 
@@ -272,11 +300,13 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   :c:macro:`BIT_STREAM_WORD_TYPE` should be set to :c:type:`uint8`.
   Default: :c:type:`uint64`.
 
+
 .. c:macro:: ZFP_BIT_STREAM_WORD_SIZE
 
   CMake macro for indirectly setting :c:macro:`BIT_STREAM_WORD_TYPE`.  Valid
   values are 8, 16, 32, 64.
   Default: 64.
+
 
 .. c:macro:: BIT_STREAM_STRIDED
 
@@ -284,11 +314,13 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   layouts, e.g., to enable progressive access.
   Default: undefined/off.
 
+
 .. c:macro:: CFP_NAMESPACE
 
   Macro for renaming the outermost |cfp| namespace, e.g., to avoid name
   clashes.
   Default: :code:`cfp`.
+
 
 .. c:macro:: PYTHON_LIBRARY
 
@@ -296,11 +328,13 @@ in the same manner that :ref:`build targets <targets>` are specified, e.g.,
   CMake default: undefined/off.
   GNU make default: off and ignored.
 
+
 .. c:macro:: PYTHON_INCLUDE_DIR
 
   Path to the Python include directory, e.g., :file:`/usr/include/python2.7`.
   CMake default: undefined/off.
   GNU make default: off and ignored.
+
 
 
 Dependencies
@@ -321,6 +355,12 @@ CUDA
 
 CUDA support requires CMake and a compatible host compiler (see
 :c:macro:`ZFP_WITH_CUDA`).
+
+HIP
+^^^^
+
+HIP support requires CMake and the HIP compiler (see
+:c:macro:`ZFP_WITH_HIP`).
 
 Python
 ^^^^^^

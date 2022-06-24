@@ -1,24 +1,20 @@
 include ../Config
 
 BINDIR = ../bin
-TARGETS = $(BINDIR)/testzfp $(BINDIR)/testviews
-CXXLIBS = -L../lib -lzfp
+TARGETS = $(BINDIR)/testzfp $(BINDIR)/testviews $(BINDIR)/testexec
+INCS = -I../include -I../array
+LIBS = -L../lib -lzfp
 
 all: $(TARGETS)
 
 $(BINDIR)/testzfp: testzfp.cpp ../lib/$(LIBZFP)
-ifeq ($(WITH_IPP), yes)
-	$(CXX) $(CXXFLAGS) -I../array testzfp.cpp $(CXXLIBS) -o $@ $(IPPLIBS)
-else
-	$(CXX) $(CXXFLAGS) -I../array testzfp.cpp $(CXXLIBS) -o $@
-endif
+	$(CXX) $(CXXFLAGS) $(INCS) testzfp.cpp $(LIBS) -o $@
 
 $(BINDIR)/testviews: testviews.cpp ../lib/$(LIBZFP)
-ifeq ($(WITH_IPP), yes)
-	$(CXX) $(CXXFLAGS) -I../array testzfp.cpp $(CXXLIBS) -o $@ $(IPPLIBS)
-else
-	$(CXX) $(CXXFLAGS) -I../array testviews.cpp $(CXXLIBS) -o $@
-endif
+	$(CXX) $(CXXFLAGS) $(INCS) testviews.cpp $(LIBS) -o $@
+
+$(BINDIR)/testexec: testexec.cpp ../lib/$(LIBZFP)
+	$(CXX) $(CXXFLAGS) $(INCS) testexec.cpp $(LIBS) -o $@
 
 test: $(BINDIR)/testzfp
 	$(BINDIR)/testzfp

@@ -4,13 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-
-#ifdef ZFP_WITH_CUDA
-#include <cuda_runtime.h>
-#include "cudaerror_macro.h"
-#endif
-
 #include "zfp.h"
 #include "zfp/macros.h"
 
@@ -121,8 +114,7 @@ usage()
   fprintf(stderr, "  -x serial : serial compression (default)\n");
   fprintf(stderr, "  -x omp[=threads[,chunk_size]] : OpenMP parallel compression\n");
   fprintf(stderr, "  -x cuda : CUDA fixed rate parallel compression/decompression\n");
-  fprintf(stderr, "Index for parallel decompression:\n");
-  fprintf(stderr, "  -m <path>: create index during compression, use index for parallel decompression\n");
+  fprintf(stderr, "  -x hip : HIP fixed rate parallel compression/decompression\n");
   fprintf(stderr, "Examples:\n");
   fprintf(stderr, "  -i file : read uncompressed file and compress to memory\n");
   fprintf(stderr, "  -z file : read compressed file and decompress to memory\n");
@@ -144,7 +136,6 @@ int main(int argc, char* argv[])
 {
   /* default settings */
   zfp_type type = zfp_type_none;
-  zfp_index_type index_type = zfp_index_none;
   size_t typesize = 0;
   uint dims = 0;
   uint nx = 0;
@@ -165,32 +156,23 @@ int main(int argc, char* argv[])
   char* inpath = 0;
   char* zfppath = 0;
   char* outpath = 0;
-  char* indexpath = 0;
   char mode = 0;
   zfp_exec_policy exec = zfp_exec_serial;
   uint threads = 0;
   uint chunk_size = 0;
-  bool use_index = 0;
 
   /* local variables */
   int i;
   zfp_field* field = NULL;
   zfp_stream* zfp = NULL;
-  zfp_index* index = NULL;
   bitstream* stream = NULL;
-  void* index_data = NULL;
-  void* raw_indata_ptr = NULL;
+  void* fi = NULL;
   void* fo = NULL;
-  void* compressed_buffer_ptr = NULL;
-  size_t compressed_bufsize = 0;
-  void* idxbuffer = NULL;
+  void* buffer = NULL;
   size_t rawsize = 0;
   size_t zfpsize = 0;
-  size_t idxsize = 0;
-  size_t idxbufsize = 0;
-    
-  void *host_cuda_ptr;
-  
+  size_t bufsize = 0;
+
   if (argc == 1)
     usage();
 
@@ -311,17 +293,10 @@ int main(int argc, char* argv[])
         }
         else if (!strcmp(argv[i], "cuda"))
           exec = zfp_exec_cuda;
+	else if (!strcmp(argv[i], "hip"))
+          exec = zfp_exec_hip;
         else
           usage();
-        break;
-      case 'm':
-        use_index = 1;
-        printf("prints index set message\n");
-        if (++i == argc) {
-          printf("No index file path specified\n");
-          usage();
-        }
-        indexpath = argv[i];
         break;
       case 'z':
         if (++i == argc)
@@ -399,7 +374,6 @@ int main(int argc, char* argv[])
 
   zfp = zfp_stream_open(NULL);
   field = zfp_field_alloc();
-  index = zfp_index_create();
 
   /* read uncompressed or compressed file */
   if (inpath) {
@@ -410,82 +384,43 @@ int main(int argc, char* argv[])
       return EXIT_FAILURE;
     }
     rawsize = typesize * count;
-  
-    if(exec == zfp_exec_cuda) {
-#ifdef ZFP_WITH_CUDA
-      cudaError_t code = cudaMallocHost((void**) &raw_indata_ptr, rawsize);
-      if(code != cudaSuccess) {
-        fprintf(stderr, "Cuda Assert: %s %s %d\n",
-                        cudaGetErrorString(code), __FILE__, __LINE__);
-        exit(code);
-      }
-#else
-      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
-      return EXIT_FAILURE;
-#endif
-    }
-    else 
-    { // CPU execution
-      raw_indata_ptr = malloc(rawsize);
-    }
-
-    if (!raw_indata_ptr) {
+    fi = malloc(rawsize);
+    if (!fi) {
       fprintf(stderr, "cannot allocate memory\n");
       return EXIT_FAILURE;
     }
-    if (fread(raw_indata_ptr, typesize, count, file) != count) {
+    if (fread(fi, typesize, count, file) != count) {
       fprintf(stderr, "cannot read input file\n");
       return EXIT_FAILURE;
     }
     fclose(file);
-    zfp_field_set_pointer(field, raw_indata_ptr);
+    zfp_field_set_pointer(field, fi);
   }
-  else { // decompression - input file read
+  else {
     /* read compressed input file in increasingly large chunks */
     FILE* file = !strcmp(zfppath, "-") ? stdin : fopen(zfppath, "rb");
     if (!file) {
       fprintf(stderr, "cannot open compressed file\n");
       return EXIT_FAILURE;
     }
-    compressed_bufsize = 0x100;
+    bufsize = 0x100;
     do {
-      compressed_bufsize *= 2;
-      compressed_buffer_ptr = realloc(compressed_buffer_ptr, compressed_bufsize);
-      if (!compressed_buffer_ptr) {
+      bufsize *= 2;
+      buffer = realloc(buffer, bufsize);
+      if (!buffer) {
         fprintf(stderr, "cannot allocate memory\n");
         return EXIT_FAILURE;
       }
-      zfpsize += fread((uchar*)compressed_buffer_ptr + zfpsize, 1, 
-                       compressed_bufsize - zfpsize, file);
-    } while (zfpsize == compressed_bufsize);
-
+      zfpsize += fread((uchar*)buffer + zfpsize, 1, bufsize - zfpsize, file);
+    } while (zfpsize == bufsize);
     if (ferror(file)) {
       fprintf(stderr, "cannot read compressed file\n");
       return EXIT_FAILURE;
     }
     fclose(file);
 
-
-    if(exec == zfp_exec_cuda) {
-#ifdef ZFP_WITH_CUDA
-      cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, compressed_bufsize);
-      if(code != cudaSuccess) {
-        fprintf(stderr, "Cuda Assert: %s %s %d\n",
-                        cudaGetErrorString(code), __FILE__, __LINE__);
-        exit(code);
-      }
-      memcpy(host_cuda_ptr, compressed_buffer_ptr, compressed_bufsize);
-      stream = stream_open(host_cuda_ptr, compressed_bufsize);
-#else
-      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
-      return EXIT_FAILURE;
-#endif
-    }
-    else {
-      /* associate bit stream with buffer */
-      stream = stream_open(compressed_buffer_ptr, compressed_bufsize);
-    }
-
+    /* associate bit stream with buffer */
+    stream = stream_open(buffer, bufsize);
     if (!stream) {
       fprintf(stderr, "cannot open compressed stream\n");
       return EXIT_FAILURE;
@@ -547,6 +482,12 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
       }
       break;
+    case zfp_exec_hip:
+      if (!zfp_stream_set_execution(zfp, exec)) {
+        fprintf(stderr, "hip execution not available\n");
+        return EXIT_FAILURE;
+      }
+      break;
     case zfp_exec_omp:
       if (!zfp_stream_set_execution(zfp, exec) ||
           !zfp_stream_set_omp_threads(zfp, threads) ||
@@ -567,38 +508,19 @@ int main(int argc, char* argv[])
   /* compress input file if provided */
   if (inpath) {
     /* allocate buffer for compressed data */
-    compressed_bufsize = zfp_stream_maximum_size(zfp, field);
-    if (!compressed_bufsize) {
+    bufsize = zfp_stream_maximum_size(zfp, field);
+    if (!bufsize) {
       fprintf(stderr, "invalid compression parameters\n");
       return EXIT_FAILURE;
     }
-
-    if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
-#ifdef ZFP_WITH_CUDA
-      cudaError_t code = cudaMallocHost((void**) &host_cuda_ptr, 
-                                        compressed_bufsize);
-      if(code != cudaSuccess) {
-        fprintf(stderr, "Cuda Assert: %s %s %d\n",
-                        cudaGetErrorString(code), __FILE__, __LINE__);
-        exit(code);
-      }
-      /* associate allocated memory buffer to stream */
-      stream = stream_open(host_cuda_ptr, compressed_bufsize);
-#else
-      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
+    buffer = malloc(bufsize);
+    if (!buffer) {
+      fprintf(stderr, "cannot allocate memory\n");
       return EXIT_FAILURE;
-#endif 
-    }
-    else { // CPU exec mode
-      compressed_buffer_ptr = malloc(compressed_bufsize);
-      if (!compressed_buffer_ptr) {
-        fprintf(stderr, "cannot allocate memory for uncompressed input file\n");
-        return EXIT_FAILURE;
-      }
-      /* associate allocated memory buffer to stream */
-      stream = stream_open(compressed_buffer_ptr, compressed_bufsize);
     }
 
+    /* associate compressed bit stream with memory buffer */
+    stream = stream_open(buffer, bufsize);
     if (!stream) {
       fprintf(stderr, "cannot open compressed stream\n");
       return EXIT_FAILURE;
@@ -609,16 +531,6 @@ int main(int argc, char* argv[])
     if (header && !zfp_write_header(zfp, field, ZFP_HEADER_FULL)) {
       fprintf(stderr, "cannot write header\n");
       return EXIT_FAILURE;
-    }
-
-    /* optionally set the index type */
-    if (index_type) {
-      zfp_index_set_type(index, index_type);
-    }
-
-    /* optionally set the index */
-    if (use_index) {
-      zfp_stream_set_index(zfp, index);
     }
 
     /* compress data */
@@ -635,34 +547,8 @@ int main(int argc, char* argv[])
         fprintf(stderr, "cannot create compressed file\n");
         return EXIT_FAILURE;
       }
-    
-      if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
-        if (fwrite(host_cuda_ptr, 1, zfpsize, file) != zfpsize) {
-          fprintf(stderr, "cannot write GPU compressed file\n");
-          return EXIT_FAILURE;
-        }
-      }
-      else { // CPU executio, writing CPU data
-          if(fwrite(compressed_buffer_ptr, 1, zfpsize, file) != zfpsize) {
-            fprintf(stderr, "cannot write CPU compressed file \n");
-            return EXIT_FAILURE;
-          }
-      }
-
-      fclose(file);
-    }
-
-    /* optionally write index */
-    if (use_index && zfppath) {
-      FILE* file = !strcmp(indexpath, "-") ? stdout : fopen(indexpath, "wb");
-      if (!file) {
-        fprintf(stderr, "cannot create index file\n");
-        return EXIT_FAILURE;
-      }
-      index_data = zfp->index->data;
-      idxsize = zfp->index->size;
-      if (fwrite(index_data, 1, idxsize, file) != idxsize) {
-        fprintf(stderr, "cannot write index to file\n");
+      if (fwrite(buffer, 1, zfpsize, file) != zfpsize) {
+        fprintf(stderr, "cannot write compressed file\n");
         return EXIT_FAILURE;
       }
       fclose(file);
@@ -699,55 +585,12 @@ int main(int argc, char* argv[])
 
     /* allocate memory for decompressed data */
     rawsize = typesize * count;
-    
-    if(exec == zfp_exec_cuda) { //GPU execution, pinned memory allocation
-#ifdef ZFP_WITH_CUDA
-      cudaError_t code = cudaMallocHost((void**) &fo, rawsize);
-      if(code != cudaSuccess) {
-        fprintf(stderr, "Cuda Assert: %s %s %d\n",
-                        cudaGetErrorString(code), __FILE__, __LINE__);
-        exit(code);
-      }
-#else
-      fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
-      return EXIT_FAILURE;
-#endif
-    }
-    else { // CPU execution
-      fo = malloc(rawsize);
-    }
-
+    fo = malloc(rawsize);
     if (!fo) {
-      fprintf(stderr, "cannot allocate memory for compressed input file\n");
+      fprintf(stderr, "cannot allocate memory\n");
       return EXIT_FAILURE;
     }
     zfp_field_set_pointer(field, fo);
-
-    /* read index in increasingly large chunks */
-    if (use_index && (zfp->index == NULL)) {
-      FILE* file = !strcmp(indexpath, "-") ? stdin : fopen(indexpath, "rb");
-      if (!file) {
-        fprintf(stderr, "cannot open index file\n");
-       return EXIT_FAILURE;
-      }
-      idxbufsize = 0x100;
-      do {
-        idxbufsize *= 2;
-        idxbuffer = realloc(idxbuffer, idxbufsize);
-        if (!idxbuffer) {
-          fprintf(stderr, "cannot allocate memory for index\n");
-          return EXIT_FAILURE;
-        }
-        idxsize += fread((uchar*)idxbuffer + idxsize, 1, idxbufsize - idxsize, file);
-      } while (idxsize == idxbufsize);
-      if (ferror(file)) {
-        fprintf(stderr, "cannot read index file\n");
-        return EXIT_FAILURE;
-      }
-      fclose(file);
-      zfp_index_set_data(index, idxbuffer, idxsize);
-      zfp_stream_set_index(zfp, index);
-    }
 
     /* decompress data */
     while (!zfp_decompress(zfp, field)) {
@@ -785,35 +628,17 @@ int main(int argc, char* argv[])
     fprintf(stderr, "type=%s nx=%u ny=%u nz=%u nw=%u", type_name[type - zfp_type_int32], nx, ny, nz, nw);
     fprintf(stderr, " raw=%lu zfp=%lu ratio=%.3g rate=%.4g", (unsigned long)rawsize, (unsigned long)zfpsize, (double)rawsize / zfpsize, CHAR_BIT * (double)zfpsize / count);
     if (stats)
-      print_error(raw_indata_ptr, fo, type, count);
+      print_error(fi, fo, type, count);
     fprintf(stderr, "\n");
   }
 
   /* free allocated storage */
- 
-  if(zfp->exec.policy == zfp_exec_cuda) {
-#ifdef ZFP_WITH_CUDA
-    checkCudaError(cudaFreeHost(raw_indata_ptr));
-    checkCudaError(cudaFreeHost(host_cuda_ptr));
-    checkCudaError(cudaFreeHost(fo));
-#else 
-    fprintf(stderr, "Binary was built without macro: ZFP_WITH_CUDA\n");
-    return EXIT_FAILURE;
-#endif
-  }
-  else {
-    free(raw_indata_ptr);
-    free(compressed_buffer_ptr);
-    free(fo);
-  }
   zfp_field_free(field);
   zfp_stream_close(zfp);
   stream_close(stream);
-
-  if(idxbuffer)
-    free(idxbuffer);
-  if(index)
-    zfp_index_free(index);
+  free(buffer);
+  free(fi);
+  free(fo);
 
   return EXIT_SUCCESS;
 }

@@ -15,7 +15,7 @@ thread_count_omp(const zfp_stream* stream)
 
 /* number of chunks to partition array into */
 static size_t
-chunk_count_omp(const zfp_stream* stream, uint blocks, uint threads)
+chunk_count_omp(const zfp_stream* stream, size_t blocks, uint threads)
 {
   size_t chunk_size = stream->exec.params.omp.chunk_size;
   /* if no chunk size is specified, assign one chunk per thread */

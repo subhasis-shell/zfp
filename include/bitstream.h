@@ -6,8 +6,8 @@
 #include "zfp/system.h"
 
 /* forward declaration of opaque type */
-
 typedef struct bitstream bitstream;
+
 extern_ const size_t stream_word_bits; /* bit stream granularity */
 
 #ifndef inline_
@@ -23,6 +23,9 @@ void stream_close(bitstream* stream);
 
 /* make a copy of bit stream to shared memory buffer */
 bitstream* stream_clone(const bitstream* stream);
+
+/* word size in bits (equal to stream_word_bits) */
+size_t stream_alignment();
 
 /* pointer to beginning of stream */
 void* stream_data(const bitstream* stream);
@@ -80,10 +83,6 @@ size_t stream_flush(bitstream* stream);
 
 /* copy n bits from one bit stream to another */
 void stream_copy(bitstream* dst, bitstream* src, size_t n);
-
-#if defined(WITH_IPP)
-void stream_set_eos(bitstream* s, size_t byte_len);
-#endif
 
 #ifdef BIT_STREAM_STRIDED
 /* set block size in number of words and spacing in number of blocks */

@@ -100,48 +100,41 @@ The following assumptions and restrictions apply:
    caught.
 */
 
-#if defined(WITH_IPP)
-/*
- * This source code file was modified with Intel(R) Integrated Performance Primitives library content
- */
-#endif
 #include <limits.h>
 #include <stdlib.h>
-#include "streamstruct.h"
+
+#ifndef inline_
+  #define inline_
+#endif
 
 /* satisfy compiler when args unused */
 #define unused_(x) ((void)(x))
 
 /* bit stream word/buffer type; granularity of stream I/O operations */
-// #ifdef BIT_STREAM_WORD_TYPE
+#ifdef BIT_STREAM_WORD_TYPE
   /* may be 8-, 16-, 32-, or 64-bit unsigned integer type */
-//  typedef BIT_STREAM_WORD_TYPE word;
-//#else
+  typedef BIT_STREAM_WORD_TYPE word;
+#else
   /* use maximum word size by default for highest speed */
-//  typedef uint64 word;
-//#endif
+  typedef uint64 word;
+#endif
 
 /* number of bits in a buffered word */
-// #define wsize ((uint)(CHAR_BIT * sizeof(word)))
+#define wsize ((uint)(CHAR_BIT * sizeof(word)))
 
 /* bit stream structure (opaque to caller) */
-
-// struct bitstream {
-//  uint bits;   /* number of buffered bits (0 <= bits < wsize) */
-//  word buffer; /* buffer for incoming/outgoing bits (buffer < 2^bits) */
-//  word* ptr;   /* pointer to next word to be read/written */
-//  word* begin; /* beginning of stream */
-//  word* end;   /* end of stream (currently unused) */
-//#ifdef BIT_STREAM_STRIDED
-//  size_t mask;     /* one less the block size in number of words */
-//  ptrdiff_t delta; /* number of words between consecutive blocks */
-//#endif
-//};
-
-
-#ifndef inline_
-  #define inline_
+struct bitstream {
+  uint bits;   /* number of buffered bits (0 <= bits < wsize) */
+  word buffer; /* buffer for incoming/outgoing bits (buffer < 2^bits) */
+  word* ptr;   /* pointer to next word to be read/written */
+  word* begin; /* beginning of stream */
+  word* end;   /* end of stream (currently unused) */
+  ushort *bitlengths; /* Individual block lengths (for variable bit rate) */
+#ifdef BIT_STREAM_STRIDED
+  size_t mask;     /* one less the block size in number of words */
+  ptrdiff_t delta; /* number of words between consecutive blocks */
 #endif
+};
 
 /* private functions ------------------------------------------------------- */
 
@@ -170,6 +163,13 @@ stream_write_word(bitstream* s, word value)
 
 /* public functions -------------------------------------------------------- */
 
+/* word size in bits (equals stream_word_bits) */
+inline_ size_t
+stream_alignment()
+{
+  return wsize;
+}
+
 /* pointer to beginning of stream */
 inline_ void*
 stream_data(const bitstream* s)
@@ -181,14 +181,14 @@ stream_data(const bitstream* s)
 inline_ size_t
 stream_size(const bitstream* s)
 {
-  return sizeof(word) * (s->ptr - s->begin);
+  return sizeof(word) * (size_t)(s->ptr - s->begin);
 }
 
 /* byte capacity of stream */
 inline_ size_t
 stream_capacity(const bitstream* s)
 {
-  return sizeof(word) * (s->end - s->begin);
+  return sizeof(word) * (size_t)(s->end - s->begin);
 }
 
 /* number of words per block */
@@ -310,14 +310,14 @@ stream_write_bits(bitstream* s, uint64 value, uint n)
 inline_ size_t
 stream_rtell(const bitstream* s)
 {
-  return wsize * (s->ptr - s->begin) - s->bits;
+  return wsize * (size_t)(s->ptr - s->begin) - s->bits;
 }
 
 /* return bit offset to next bit to be written */
 inline_ size_t
 stream_wtell(const bitstream* s)
 {
-  return wsize * (s->ptr - s->begin) + s->bits;
+  return wsize * (size_t)(s->ptr - s->begin) + s->bits;
 }
 
 /* position stream for reading or writing at beginning */
@@ -437,6 +437,7 @@ stream_open(void* buffer, size_t bytes)
   if (s) {
     s->begin = (word*)buffer;
     s->end = s->begin + bytes / sizeof(word);
+    s->bitlengths = NULL;
 #ifdef BIT_STREAM_STRIDED
     stream_set_stride(s, 0, 0);
 #endif
@@ -461,14 +462,5 @@ stream_clone(const bitstream* s)
     *c = *s;
   return c;
 }
-
-#if defined(WITH_IPP)
-inline_
-void stream_set_eos(bitstream* s, size_t byte_len)
-{
-    if (s)
-        s->ptr = s->begin + byte_len / sizeof(word);
-}
-#endif
 
 #undef unused_

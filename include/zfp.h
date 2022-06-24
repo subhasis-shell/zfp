@@ -9,49 +9,14 @@
 
 #include "zfp/types.h"
 #include "zfp/system.h"
-
-// Include bitstream structure in bitstruct.h
-
-#include "streamstruct.h"
+#include "zfp/version.h"
 #include "bitstream.h"
-
-#ifdef ZFP_WITH_CUDA
-
-#include <cuda_runtime.h>
-#include "cudaerror_macro.h"
-
-#endif
 
 /* macros ------------------------------------------------------------------ */
 
-/* stringification */
-#define _zfp_str_(x) # x
-#define _zfp_str(x) _zfp_str_(x)
-
-/* library version information */
-#define ZFP_VERSION_MAJOR 0 /* library major version number */
-#define ZFP_VERSION_MINOR 5 /* library minor version number */
-#define ZFP_VERSION_PATCH 5 /* library patch version number */
-#define ZFP_VERSION_RELEASE ZFP_VERSION_PATCH
-
-/* codec version number (see also zfp_codec_version) */
-#define ZFP_CODEC 5
-
-/* library version number (see also zfp_library_version) */
-#define ZFP_VERSION \
-  ((ZFP_VERSION_MAJOR << 8) + \
-   (ZFP_VERSION_MINOR << 4) + \
-   (ZFP_VERSION_PATCH << 0))
-
-/* library version string (see also zfp_version_string) */
-#define ZFP_VERSION_STRING \
-  _zfp_str(ZFP_VERSION_MAJOR) "." \
-  _zfp_str(ZFP_VERSION_MINOR) "." \
-  _zfp_str(ZFP_VERSION_PATCH)
-
 /* default compression parameters */
 #define ZFP_MIN_BITS     1 /* minimum number of bits per block */
-#define ZFP_MAX_BITS 16657 /* maximum number of bits per block */
+#define ZFP_MAX_BITS 16658 /* maximum number of bits per block */
 #define ZFP_MAX_PREC    64 /* maximum precision supported */
 #define ZFP_MIN_EXP  -1074 /* minimum floating-point base-2 exponent */
 
@@ -86,15 +51,9 @@ typedef int zfp_bool; /* Boolean type */
 typedef enum {
   zfp_exec_serial = 0, /* serial execution (default) */
   zfp_exec_omp    = 1, /* OpenMP multi-threaded execution */
-  zfp_exec_cuda   = 2  /* CUDA parallel execution */
+  zfp_exec_cuda   = 2, /* CUDA parallel execution */
+  zfp_exec_hip    = 3  /* HIP parallel execution */
 } zfp_exec_policy;
-
-/* index type */
-typedef enum {
-  zfp_index_none = 0,   /* no index */
-  zfp_index_offset = 1, /* offsets (OMP and CUDA decompression) */
-  zfp_index_length = 2, /* lengths */
-} zfp_index_type;
 
 /* OpenMP execution parameters */
 typedef struct {
@@ -112,13 +71,6 @@ typedef struct {
   zfp_exec_params params; /* execution parameters */
 } zfp_execution;
 
-/* index for parallel decompression */
-typedef struct {
-  zfp_index_type type; /* zfp_index_none if no index */
-  void* data;          /* NULL if no index */
-  size_t size;         /* byte size of data (0 if no index) */
-} zfp_index;
-
 /* compressed stream; use accessors to get/set members */
 typedef struct {
   uint minbits;       /* minimum number of bits to store per block */
@@ -127,7 +79,6 @@ typedef struct {
   int minexp;         /* minimum floating point bit plane number to store */
   bitstream* stream;  /* compressed bit stream */
   zfp_execution exec; /* execution policy and parameters */
-  zfp_index* index;   /* index for parallel decompression */
 } zfp_stream;
 
 /* compression mode */
@@ -149,28 +100,13 @@ typedef enum {
   zfp_type_double = 4  /* double precision floating point */
 } zfp_type;
 
-
 /* uncompressed array; use accessors to get/set members */
 typedef struct {
   zfp_type type;       /* scalar type (e.g. int32, double) */
   uint nx, ny, nz, nw; /* sizes (zero for unused dimensions) */
   int sx, sy, sz, sw;  /* strides (zero for contiguous array a[nw][nz][ny][nx]) */
   void* data;          /* pointer to array data */
-
-#ifdef ZFP_WITH_CUDA
-  cudaStream_t cuStream;
-#endif
-
 } zfp_field;
-
-/* Adding additional struct to pass params for GPU offloading */
-
-/*
-typedef struct {
-  unsigned long long  *device_stream;  // compressed stream on device
-  void *device_data;  // Uncompressed data on device
-} ext_zfp_field;
-*/
 
 #ifdef __cplusplus
 extern "C" {
@@ -211,9 +147,28 @@ zfp_stream_bit_stream(
   const zfp_stream* stream /* compressed stream */
 );
 
-/* returns enum of compression mode */
-zfp_mode                   /* enum for compression mode */
+/* enumerated compression mode */
+zfp_mode                   /* compression mode or zfp_mode_null if not set */
 zfp_stream_compression_mode(
+  const zfp_stream* stream /* compressed stream */
+);
+
+/* rate in compressed bits/scalar (when in fixed-rate mode) */
+double                      /* rate or zero upon failure */
+zfp_stream_rate(
+  const zfp_stream* stream, /* compressed stream */
+  uint dims                 /* array dimensionality (1, 2, 3, or 4) */
+);
+
+/* precision in uncompressed bits/scalar (when in fixed-precision mode) */
+uint                       /* precision or zero upon failure */
+zfp_stream_precision(
+  const zfp_stream* stream /* compressed stream */
+);
+
+/* accuracy as absolute error tolerance (when in fixed-accuracy mode) */
+double                     /* tolerance or zero upon failure */
+zfp_stream_accuracy(
   const zfp_stream* stream /* compressed stream */
 );
 
@@ -274,7 +229,7 @@ zfp_stream_set_rate(
   double rate,        /* desired rate in compressed bits/scalar */
   zfp_type type,      /* scalar type to compress */
   uint dims,          /* array dimensionality (1, 2, 3, or 4) */
-  int wra             /* nonzero if write random access is needed */
+  zfp_bool align      /* word-aligned blocks, e.g., for write random access */
 );
 
 /* set precision in uncompressed bits/scalar (fixed-precision mode) */
@@ -299,51 +254,13 @@ zfp_stream_set_mode(
 );
 
 /* set all parameters (expert mode); leaves stream intact on failure */
-int                   /* nonzero upon success */
+zfp_bool              /* true upon success */
 zfp_stream_set_params(
   zfp_stream* stream, /* compressed stream */
   uint minbits,       /* minimum number of bits per 4^d block */
   uint maxbits,       /* maximum number of bits per 4^d block */
   uint maxprec,       /* maximum precision (# bit planes coded) */
   int minexp          /* minimum base-2 exponent; error <= 2^minexp */
-);
-
-/* set size of buffer for compressed data */
-void
-zfp_stream_set_size(
-  zfp_stream* zfp,   /* compressed stream */
-  size_t size        /* size of the buffer */
-);
-
-/* set index of the stream */
-void
-zfp_stream_set_index(
-  zfp_stream* zfp,  /* compressed stream */
-  zfp_index* index  /* index */
-);
-
-/* allocate index struct */
-zfp_index* /* pointer to default uninitialized index */
-zfp_index_create();
-
-/* set the size of the index */
-void
-zfp_index_set_type(
-  zfp_index* index,    /* the index */
-  zfp_index_type type /* type of the index */
-);
-
-/* set the data of the index */
-void
-zfp_index_set_data(
-  zfp_index* index, /* index */
-  void* data,       /* buffer for index data */
-  size_t size       /* size of the index data buffer */
-);
-
-void
-zfp_index_free(
-  zfp_index* index
 );
 
 /* high-level API: execution policy ---------------------------------------- */
@@ -367,21 +284,21 @@ zfp_stream_omp_chunk_size(
 );
 
 /* set execution policy */
-int                      /* nonzero upon success */
+zfp_bool                 /* true upon success */
 zfp_stream_set_execution(
   zfp_stream* stream,    /* compressed stream */
   zfp_exec_policy policy /* execution policy */
 );
 
 /* set OpenMP execution policy and number of threads */
-int                   /* nonzero upon success */
+zfp_bool              /* true upon success */
 zfp_stream_set_omp_threads(
   zfp_stream* stream, /* compressed stream */
   uint threads        /* number of OpenMP threads to use (0 for default) */
 );
 
 /* set OpenMP execution policy and number of blocks per chunk (1D only) */
-int                   /* nonzero upon success */
+zfp_bool              /* true upon success */
 zfp_stream_set_omp_chunk_size(
   zfp_stream* stream, /* compressed stream */
   uint chunk_size     /* number of blocks per chunk (0 for default) */
@@ -445,6 +362,12 @@ zfp_field_pointer(
   const zfp_field* field /* field metadata */
 );
 
+/* pointer to lowest memory address spanned by field */
+void*
+zfp_field_begin(
+  const zfp_field* field /* field metadata */
+);
+
 /* field scalar type */
 zfp_type                 /* scalar type */
 zfp_field_type(
@@ -457,7 +380,7 @@ zfp_field_precision(
   const zfp_field* field /* field metadata */
 );
 
-/* field dimensionality (1, 2, or 3) */
+/* field dimensionality (1, 2, 3, or 4) */
 uint                     /* number of dimensions */
 zfp_field_dimensionality(
   const zfp_field* field /* field metadata */
@@ -470,11 +393,27 @@ zfp_field_size(
   uint* size              /* number of scalars per dimension (may be NULL) */
 );
 
+/* number of bytes spanned by field data including gaps (if any) */
+size_t
+zfp_field_size_bytes(
+  const zfp_field* field /* field metadata */
+);
+
+/* number of ZFP blocks */
+size_t
+zfp_field_num_blocks (const zfp_field* field);
+
 /* field strides per dimension */
-int                       /* zero if array is contiguous */
+zfp_bool                  /* true if array is not contiguous */
 zfp_field_stride(
   const zfp_field* field, /* field metadata */
   int* stride             /* stride in scalars per dimension (may be NULL) */
+);
+
+/* field contiguity test */
+zfp_bool                 /* true if field layout is contiguous */
+zfp_field_is_contiguous(
+  const zfp_field* field /* field metadata */
 );
 
 /* field scalar type and dimensions */
@@ -568,7 +507,7 @@ zfp_field_set_stride_4d(
 );
 
 /* set field scalar type and dimensions */
-int                 /* nonzero upon success */
+zfp_bool            /* true upon success */
 zfp_field_set_metadata(
   zfp_field* field, /* field metadata */
   uint64 meta       /* compact 52-bit encoding of metadata */
@@ -782,17 +721,8 @@ void zfp_demote_int32_to_uint8(uint8* oblock, const int32* iblock, uint dims);
 void zfp_demote_int32_to_int16(int16* oblock, const int32* iblock, uint dims);
 void zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims);
 
-/* CUDA zfp calls, decoupled memory management 
- * Added by: Subhasis, Shell */
-#ifdef ZFP_WITH_CUDA
-size_t zfpEncodeGpuStream(zfp_stream *stream, 
-                    zfp_field *field, 
-                    cudaStream_t custream);
-
-size_t zfpDecodeGpuStream(zfp_stream *stream, 
-                    zfp_field *field,
-                    cudaStream_t custream);
-#endif
+/* Conservative size (in bits) of a single compressed block */
+uint zfp_block_maxbits(const zfp_stream* zfp, const zfp_field* field);
 
 #ifdef __cplusplus
 }

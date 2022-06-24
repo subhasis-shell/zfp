@@ -105,7 +105,6 @@ cudaDecode3(Word *blocks,
     scatter3(result, out + offset, stride.x, stride.y, stride.z);
   }
 }
-
 template<class Scalar>
 size_t decode3launch(uint3 dims, 
                      int3 stride,
@@ -158,83 +157,6 @@ size_t decode3launch(uint3 dims,
      stride,
      zfp_pad,
      maxbits);
-  checkCudaError(cudaDeviceSynchronize());
-
-#ifdef CUDA_ZFP_RATE_PRINT
-  cudaEventRecord(stop);
-  cudaEventSynchronize(stop);
-	cudaStreamSynchronize(0);
-
-  float miliseconds = 0;
-  cudaEventElapsedTime(&miliseconds, start, stop);
-  float seconds = miliseconds / 1000.f;
-  float rate = (float(dims.x * dims.y * dims.z) * sizeof(Scalar) ) / seconds;
-  rate /= 1024.f;
-  rate /= 1024.f;
-  rate /= 1024.f;
-  printf("Decode elapsed time: %.5f (s)\n", seconds);
-  printf("# decode3 rate: %.2f (GB / sec) %d\n", rate, maxbits);
-#endif
-
-  return stream_bytes;
-}
-
-// CUDA stream enabled decode kernel launch
-
-
-template<class Scalar>
-size_t decode3launchstream(uint3 dims, 
-                     int3 stride,
-                     Word *stream,
-                     Scalar *d_data,
-                     uint maxbits,
-                     cudaStream_t custream)
-{
-  const int cuda_block_size = 128;
-  dim3 block_size;
-  block_size = dim3(cuda_block_size, 1, 1);
-
-  uint3 zfp_pad(dims); 
-  // ensure that we have block sizes
-  // that are a multiple of 4
-  if(zfp_pad.x % 4 != 0) zfp_pad.x += 4 - dims.x % 4;
-  if(zfp_pad.y % 4 != 0) zfp_pad.y += 4 - dims.y % 4;
-  if(zfp_pad.z % 4 != 0) zfp_pad.z += 4 - dims.z % 4;
-
-  const int zfp_blocks = (zfp_pad.x * zfp_pad.y * zfp_pad.z) / 64; 
-
-  
-  //
-  // we need to ensure that we launch a multiple of the 
-  // cuda block size
-  //
-  int block_pad = 0; 
-  if(zfp_blocks % cuda_block_size != 0)
-  {
-    block_pad = cuda_block_size - zfp_blocks % cuda_block_size; 
-  }
-
-  size_t total_blocks = block_pad + zfp_blocks;
-  size_t stream_bytes = calc_device_mem3d(zfp_pad, maxbits);
-
-  dim3 grid_size = calculate_grid_size(total_blocks, cuda_block_size);
-
-#ifdef CUDA_ZFP_RATE_PRINT
-  // setup some timing code
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start);
-  cudaEventCreate(&stop);
-
-  cudaEventRecord(start);
-#endif
-
-  cudaDecode3<Scalar, 64> <<< grid_size, block_size, 0, custream >>>
-    (stream,
-		 d_data,
-     dims,
-     stride,
-     zfp_pad,
-     maxbits);
 
 #ifdef CUDA_ZFP_RATE_PRINT
   cudaEventRecord(stop);
@@ -263,19 +185,6 @@ size_t decode3(uint3 dims,
                uint maxbits)
 {
 	return decode3launch<Scalar>(dims, stride, stream, d_data, maxbits);
-}
-
-// CUDA stream implementation of decode 
-
-template<class Scalar>
-size_t decode3stream(uint3 dims, 
-               int3 stride,
-               Word  *stream,
-               Scalar *d_data,
-               uint maxbits,
-               cudaStream_t custream)
-{
-	return decode3launchstream<Scalar>(dims, stride, stream, d_data, maxbits, custream);
 }
 
 } // namespace cuZFP

@@ -1,22 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
-
-if(WITH_IPP)
-# This file is modified with Intel(R) Integrated Performance Primitives content
-    if(NOT DEFINED ENV{IPPROOT})
-        message(FATAL_ERROR "IPPROOT environment variable should be set for Intel(R) IPP build")
-    endif()
-    message("Using Intel(R) IPP")
-    add_definitions(-DWITH_IPP)
-    if(WITH_IPP_AVX2)
-      add_definitions(-DWITH_IPP_AVX2)
-    endif()
-    set(IPPROOT $ENV{IPPROOT})
-    include_directories(${IPPROOT}/include)
-    if(ARCH STREQUAL "ia32" AND UNIX)
-        set(CMAKE_C_FLAGS -m32)
-        set(CMAKE_CXX_FLAGS -m32)
-    endif()
+if (ZFP_WITH_HIP)
+	cmake_minimum_required(VERSION 3.21)
 endif()
+
 
 # Fail immediately if not using an out-of-source build
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
@@ -28,7 +14,7 @@ endif()
 #------------------------------------------------------------------------------#
 # Parse version number from zfp.h
 #------------------------------------------------------------------------------#
-file(READ ${CMAKE_CURRENT_SOURCE_DIR}/include/zfp.h _zfp_h_contents)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/include/zfp/version.h _zfp_h_contents)
 string(REGEX REPLACE ".*#define[ \t]+ZFP_VERSION_MAJOR[ \t]+([0-9]+).*"
      "\\1" ZFP_VERSION_MAJOR ${_zfp_h_contents})
 string(REGEX REPLACE ".*#define[ \t]+ZFP_VERSION_MINOR[ \t]+([0-9]+).*"
@@ -39,7 +25,6 @@ set(ZFP_VERSION
   "${ZFP_VERSION_MAJOR}.${ZFP_VERSION_MINOR}.${ZFP_VERSION_PATCH}")
 
 project(ZFP VERSION ${ZFP_VERSION})
-
 #------------------------------------------------------------------------------#
 # Some boilerplate to setup nice output directories
 #------------------------------------------------------------------------------#
@@ -86,6 +71,9 @@ message(STATUS "Compiling with C standard: ${CMAKE_C_STANDARD}")
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 98)
 endif()
+if(ZFP_WITH_HIP)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
 message(STATUS "Compiling with C++ standard: ${CMAKE_CXX_STANDARD}")
 
 include(CMakeDependentOption)
@@ -122,19 +110,32 @@ set(ZFP_BIT_STREAM_WORD_SIZE 64 CACHE STRING
   "Use smaller bit stream word type for finer rate granularity")
 set_property(CACHE ZFP_BIT_STREAM_WORD_SIZE PROPERTY STRINGS "8;16;32;64")
 
+if(CMAKE_C_COMPILER_ID MATCHES "PGI|NVHPC")
+  # Use default alignment to address PGI compiler bug.
+  set(ZFP_CACHE_LINE_SIZE 0 CACHE STRING "Cache line alignment in bytes")
+  mark_as_advanced(ZFP_CACHE_LINE_SIZE)
+endif()
+
+set(PPM_CHROMA 2 CACHE STRING "Chroma block dimensionality for ppm example")
+set_property(CACHE PPM_CHROMA PROPERTY STRINGS "1;2")
+
 option(ZFP_WITH_CUDA "Enable CUDA parallel compression" OFF)
 
-option(ZFP_WITH_BIT_STREAM_STRIDED
-  "Enable strided access for progressive zfp streams" OFF)
+option(ZFP_WITH_BIT_STREAM_STRIDED "Enable strided access for progressive zfp streams" OFF)
+mark_as_advanced(ZFP_WITH_BIT_STREAM_STRIDED)
 
 option(ZFP_WITH_ALIGNED_ALLOC "Enable aligned memory allocation" OFF)
+mark_as_advanced(ZFP_WITH_ALIGNED_ALLOC)
 
 option(ZFP_WITH_CACHE_TWOWAY "Use two-way skew-associative cache" OFF)
+mark_as_advanced(ZFP_WITH_CACHE_TWOWAY)
 
 option(ZFP_WITH_CACHE_FAST_HASH
   "Use a faster but more collision prone hash function" OFF)
+mark_as_advanced(ZFP_WITH_CACHE_FAST_HASH)
 
 option(ZFP_WITH_CACHE_PROFILE "Count cache misses" OFF)
+mark_as_advanced(ZFP_WITH_CACHE_PROFILE)
 
 # Handle compile-time macros
 
@@ -148,7 +149,7 @@ if((DEFINED ZFP_UINT64) AND (DEFINED ZFP_UINT64_SUFFIX))
   list(APPEND zfp_public_defs ZFP_UINT64_SUFFIX=${ZFP_UINT64_SUFFIX})
 endif()
 
-# This odd cmake pattern here let's the OpenMP feature be either auto-detected,
+# This odd cmake pattern here lets the OpenMP feature be either auto-detected,
 # explicitly enabled, or explicitly disabled, instead of just on or off.
 if(DEFINED ZFP_WITH_OPENMP)
   option(ZFP_WITH_OPENMP "Enable OpenMP parallel compression"
@@ -165,10 +166,8 @@ endif()
 # instead need to treat the OpenMP C flags as both compile and link flags
 # i.e. -fopenmp for compiling and -lgomp for linking, use -fomp for both
 # compiling and linking
-if (NOT MSVC)
-  if(ZFP_WITH_OPENMP AND NOT OpenMP_C_LIBRARIES)
-    set(OpenMP_C_LIBRARIES ${OpenMP_C_FLAGS})
-  endif()
+if(ZFP_WITH_OPENMP AND NOT OpenMP_C_LIBRARIES)
+  set(OpenMP_C_LIBRARIES ${OpenMP_C_FLAGS})
 endif()
 
 if(ZFP_WITH_CUDA)
@@ -178,13 +177,32 @@ if(ZFP_WITH_CUDA)
   if(NOT CUDA_FOUND)
     message(FATAL_ERROR "ZFP_WITH_CUDA is enabled, but a CUDA installation was not found.")
   endif()
-  if(${CUDA_VERSION_MAJOR} LESS 7)
-        message(FATAL_ERROR "zfp requires at least CUDA 7.0.")
+  if(${CUDA_VERSION_MAJOR} LESS 9)
+    message(FATAL_ERROR "zfp requires at least CUDA 9.0.")
   endif()
+  if(${CUDA_VERSION_MAJOR} LESS 11)
+    # CUB is part of CUDA since CUDA 11
+    # Todo: get CUB from https://github.com/NVIDIA/cub.git
+    message(FATAL_ERROR "TODO: Install CUB for CUDA < 11")
+  endif()
+  set (CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} \
+                        -gencode arch=compute_35,code=compute_35 \
+                        -gencode arch=compute_60,code=compute_60 \
+                        -gencode arch=compute_70,code=compute_70")
+endif()
+
+if(ZFP_WITH_HIP)
+  enable_language(HIP)
 endif()
 
 if(NOT (ZFP_BIT_STREAM_WORD_SIZE EQUAL 64))
   list(APPEND zfp_private_defs BIT_STREAM_WORD_TYPE=uint${ZFP_BIT_STREAM_WORD_SIZE})
+endif()
+
+if(DEFINED ZFP_CACHE_LINE_SIZE)
+  # Add to zfp_public_defs since many tests currently include files from src.
+#  list(APPEND zfp_public_defs ZFP_CACHE_LINE_SIZE=${ZFP_CACHE_LINE_SIZE})
+  list(APPEND zfp_private_defs ZFP_CACHE_LINE_SIZE=${ZFP_CACHE_LINE_SIZE})
 endif()
 
 if(ZFP_WITH_BIT_STREAM_STRIDED)
@@ -206,6 +224,8 @@ endif()
 if(ZFP_WITH_CACHE_PROFILE)
   list(APPEND zfp_compressed_array_defs ZFP_WITH_CACHE_PROFILE)
 endif()
+
+list(APPEND ppm_private_defs PPM_CHROMA=${PPM_CHROMA})
 
 # Link libm only if necessary
 include(CheckCSourceCompiles)
@@ -290,7 +310,6 @@ endif()
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY VALUE Release)
 endif()
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 #------------------------------------------------------------------------------#
 # Packaging

@@ -74,18 +74,19 @@ endif()
 # checksums are generated through C tests, no need to compile C++ tests
 if((NOT MINGW) AND (NOT DEFINED ZFP_OMP_TESTS_ONLY) AND (NOT PRINT_CHECKSUMS))
   # clone googletest into build/
-  configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
+  configure_file(CMakeLists.txt.in ${ZFP_BINARY_DIR}/tests/googletest-download/CMakeLists.txt)
   execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" ${GTEST_ARGS} .
     RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests/googletest-download
+    WORKING_DIRECTORY ${ZFP_BINARY_DIR}/tests/googletest-download
   )
+
   if(result)
     message(FATAL_ERROR "CMake step for googletest failed: ${result}")
   endif()
   # build gtest
   execute_process(COMMAND ${CMAKE_COMMAND} --build .
     RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests/googletest-download
+    WORKING_DIRECTORY ${ZFP_BINARY_DIR}/tests/googletest-download
   )
   if(result)
     message(FATAL_ERROR "Build step for googletest failed: ${result}")
@@ -93,8 +94,8 @@ if((NOT MINGW) AND (NOT DEFINED ZFP_OMP_TESTS_ONLY) AND (NOT PRINT_CHECKSUMS))
 
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
-  add_subdirectory(${CMAKE_BINARY_DIR}/googletest-src
-    ${CMAKE_BINARY_DIR}/googletest-build
+  add_subdirectory(${ZFP_BINARY_DIR}/tests/googletest-src
+    ${ZFP_BINARY_DIR}/tests/googletest-build
   )
 
   if(CMAKE_VERSION VERSION_LESS 2.8.11)
@@ -110,6 +111,7 @@ if((NOT MINGW) AND (NOT DEFINED ZFP_OMP_TESTS_ONLY) AND (NOT PRINT_CHECKSUMS))
 endif()
 
 
+# testzfp
 add_executable(testzfp testzfp.cpp)
 target_link_libraries(testzfp zfp)
 target_compile_definitions(testzfp PRIVATE ${zfp_compressed_array_defs})
@@ -132,6 +134,25 @@ if(ZFP_BUILD_TESTING_LARGE)
   endforeach()
 endif()
 
+# testexec
+if(ZFP_WITH_OPENMP OR ZFP_WITH_CUDA OR ZFP_WITH_HIP)
+  add_executable(testexec testexec.cpp)
+  target_link_libraries(testexec zfp)
+  if(ZFP_WITH_OPENMP)
+    target_compile_definitions(testexec PRIVATE -DZFP_WITH_OPENMP)
+  endif()
+  if(NOT DEFINED ZFP_OMP_TESTS_ONLY)
+    if(ZFP_WITH_CUDA)
+      target_compile_definitions(testexec PRIVATE -DZFP_WITH_CUDA)
+    endif()
+    if(ZFP_WITH_HIP)
+      target_compile_definitions(testexec PRIVATE -DZFP_WITH_HIP)
+    endif()
+  endif()
+  add_test(NAME execution-policy COMMAND testexec)
+endif()
+
+# Python tests
 if(BUILD_ZFPY)
   add_subdirectory(python)
 endif()

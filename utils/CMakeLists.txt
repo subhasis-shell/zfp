@@ -5,10 +5,13 @@ add_executable(zfpcmd zfp.c)
 if(NOT MSVC)
   set_property(TARGET zfpcmd PROPERTY OUTPUT_NAME zfp)
 endif()
+
 target_link_libraries(zfpcmd zfp)
 if(HAVE_LIBM_MATH)
   target_link_libraries(zfpcmd m)
 endif()
-if(ZFP_WITH_CUDA)
-  target_link_libraries(zfpcmd cudart)
+
+if(BUILD_UTILITIES)
+  install(TARGETS zfpcmd
+    DESTINATION "${CMAKE_INSTALL_BINDIR}")
 endif()

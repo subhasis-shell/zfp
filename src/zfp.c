@@ -4,12 +4,9 @@
 #include <stdlib.h>
 #include "zfp.h"
 #include "zfp/macros.h"
+#include "zfp/version.h"
 #include "template/template.h"
 
-#if defined(WITH_IPP)
-#include <ippdc.h>
-#include <ipps.h>
-#endif
 /* public data ------------------------------------------------------------- */
 
 const uint zfp_codec_version = ZFP_CODEC;
@@ -35,7 +32,30 @@ type_precision(zfp_type type)
   }
 }
 
-static int
+static size_t
+field_index_span(const zfp_field* field, ptrdiff_t* min, ptrdiff_t* max)
+{
+  /* compute strides */
+  ptrdiff_t sx = field->sx ? field->sx : 1;
+  ptrdiff_t sy = field->sy ? field->sy : (ptrdiff_t)field->nx;
+  ptrdiff_t sz = field->sz ? field->sz : (ptrdiff_t)(field->nx * field->ny);
+  ptrdiff_t sw = field->sw ? field->sw : (ptrdiff_t)(field->nx * field->ny * field->nz);
+  /* compute largest offsets from base pointer */
+  ptrdiff_t dx = field->nx ? sx * (ptrdiff_t)(field->nx - 1) : 0;
+  ptrdiff_t dy = field->ny ? sy * (ptrdiff_t)(field->ny - 1) : 0;
+  ptrdiff_t dz = field->nz ? sz * (ptrdiff_t)(field->nz - 1) : 0;
+  ptrdiff_t dw = field->nw ? sw * (ptrdiff_t)(field->nw - 1) : 0;
+  /* compute lowest and highest offset */
+  ptrdiff_t imin = MIN(dx, 0) + MIN(dy, 0) + MIN(dz, 0) + MIN(dw, 0);
+  ptrdiff_t imax = MAX(dx, 0) + MAX(dy, 0) + MAX(dz, 0) + MAX(dw, 0);
+  if (min)
+    *min = imin;
+  if (max)
+    *max = imax;
+  return imax - imin + 1;
+}
+
+static zfp_bool
 is_reversible(const zfp_stream* zfp)
 {
   return zfp->minexp < ZFP_MIN_EXP;
@@ -52,54 +72,40 @@ is_reversible(const zfp_stream* zfp)
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
-#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
+#include "template/hipcompress.c"
+#include "template/hipdecompress.c"
 #undef Scalar
 
 #define Scalar int64
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
-#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
+#include "template/hipcompress.c"
+#include "template/hipdecompress.c"
 #undef Scalar
 
 #define Scalar float
-#if defined (WITH_IPP)
-	#define IPP_OPTIMIZATION_ENABLED
-#if defined (WITH_IPP_AVX2)
-  /* Turn OFF AVX512 Instructions Explicitly */
-  #include <ipp.h>
-  #define PX_FM ( ippCPUID_MMX | ippCPUID_SSE | ippCPUID_SSE2 )
-  #define M7_FM ( PX_FM | ippCPUID_SSE3 )
-  #define U8_FM ( M7_FM | ippCPUID_SSSE3 )
-  #define N8_FM ( U8_FM | ippCPUID_MOVBE )
-  #define Y8_FM ( U8_FM | ippCPUID_SSE41 | ippCPUID_SSE42 | ippCPUID_AES | ippCPUID_CLMUL | ippCPUID_SHA )
-  #define E9_FM ( Y8_FM | ippCPUID_AVX | ippAVX_ENABLEDBYOS | ippCPUID_RDRAND | ippCPUID_F16C )
-  #define L9_FM ( E9_FM | ippCPUID_MOVBE | ippCPUID_AVX2 | ippCPUID_ADCOX | ippCPUID_RDSEED | ippCPUID_PREFETCHW )
-  #define CPU_AVX2 L9_FM
-#endif /* WITH_IPP_AVX2 */
-#endif /* WITH_IPP */
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
-#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
-#if defined (WITH_IPP)
-	#undef IPP_OPTIMIZATION_ENABLED
-#endif
+#include "template/hipcompress.c"
+#include "template/hipdecompress.c"
 #undef Scalar
 
 #define Scalar double
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
-#include "template/ompdecompress.c"
 #include "template/cudacompress.c"
 #include "template/cudadecompress.c"
+#include "template/hipcompress.c"
+#include "template/hipdecompress.c"
 #undef Scalar
 
 /* public functions: miscellaneous ----------------------------------------- */
@@ -202,6 +208,14 @@ zfp_field_pointer(const zfp_field* field)
   return field->data;
 }
 
+void*
+zfp_field_begin(const zfp_field* field)
+{
+  ptrdiff_t min;
+  field_index_span(field, &min, NULL);
+  return (void*)((uchar*)field->data + min * (ptrdiff_t)type_precision(field->type));
+}
+
 zfp_type
 zfp_field_type(const zfp_field* field)
 {
@@ -241,7 +255,24 @@ zfp_field_size(const zfp_field* field, uint* size)
   return (size_t)MAX(field->nx, 1u) * (size_t)MAX(field->ny, 1u) * (size_t)MAX(field->nz, 1u) * (size_t)MAX(field->nw, 1u);
 }
 
-int
+size_t
+zfp_field_size_bytes(const zfp_field* field)
+{
+  return field_index_span(field, NULL, NULL) * type_precision(field->type);
+}
+
+size_t
+zfp_field_num_blocks (const zfp_field* field)
+{
+  uint mx = (MAX(field->nx, 1u) + 3) / 4;
+  uint my = (MAX(field->ny, 1u) + 3) / 4;
+  uint mz = (MAX(field->nz, 1u) + 3) / 4;
+  uint mw = (MAX(field->nw, 1u) + 3) / 4;
+  size_t blocks = (size_t)mx * (size_t)my * (size_t)mz * (size_t)mw;
+  return blocks;
+}
+
+zfp_bool
 zfp_field_stride(const zfp_field* field, int* stride)
 {
   if (stride)
@@ -260,6 +291,12 @@ zfp_field_stride(const zfp_field* field, int* stride)
         break;
     }
   return field->sx || field->sy || field->sz || field->sw;
+}
+
+zfp_bool
+zfp_field_is_contiguous(const zfp_field* field)
+{
+  return field_index_span(field, NULL, NULL) == zfp_field_size(field, NULL);
 }
 
 uint64
@@ -401,13 +438,13 @@ zfp_field_set_stride_4d(zfp_field* field, int sx, int sy, int sz, int sw)
   field->sw = sw;
 }
 
-int
+zfp_bool
 zfp_field_set_metadata(zfp_field* field, uint64 meta)
 {
   uint64 dims;
   /* ensure value is in range */
   if (meta >> ZFP_META_BITS)
-    return 0;
+    return zfp_false;
   field->type = (zfp_type)((meta & 0x3u) + 1); meta >>= 2;
   dims = (meta & 0x3u) + 1; meta >>= 2;
   switch (dims) {
@@ -438,7 +475,7 @@ zfp_field_set_metadata(zfp_field* field, uint64 meta)
       break;
   }
   field->sx = field->sy = field->sz = field->sw = 0;
-  return 1;
+  return zfp_true;
 }
 
 /* public functions: zfp compressed stream --------------------------------- */
@@ -454,7 +491,6 @@ zfp_stream_open(bitstream* stream)
     zfp->maxprec = ZFP_MAX_PREC;
     zfp->minexp = ZFP_MIN_EXP;
     zfp->exec.policy = zfp_exec_serial;
-    zfp->index = NULL;
   }
   return zfp;
 }
@@ -513,6 +549,30 @@ zfp_stream_compression_mode(const zfp_stream* zfp)
     return zfp_mode_reversible;
 
   return zfp_mode_expert;
+}
+
+double
+zfp_stream_rate(const zfp_stream* zfp, uint dims)
+{
+  return (zfp_stream_compression_mode(zfp) == zfp_mode_fixed_rate)
+           ? (double)zfp->maxbits / (1u << (2 * dims))
+           : 0.0;
+}
+
+uint
+zfp_stream_precision(const zfp_stream* zfp)
+{
+  return (zfp_stream_compression_mode(zfp) == zfp_mode_fixed_precision)
+           ? zfp->maxprec
+           : 0;
+}
+
+double
+zfp_stream_accuracy(const zfp_stream* zfp)
+{
+  return (zfp_stream_compression_mode(zfp) == zfp_mode_fixed_accuracy)
+           ? ldexp(1.0, zfp->minexp)
+           : 0.0;
 }
 
 uint64
@@ -592,37 +652,43 @@ zfp_stream_compressed_size(const zfp_stream* zfp)
   return stream_size(zfp->stream);
 }
 
-size_t
-zfp_stream_maximum_size(const zfp_stream* zfp, const zfp_field* field)
+uint zfp_block_maxbits(const zfp_stream* zfp, const zfp_field* field)
 {
+  int reversible = is_reversible(zfp);
   uint dims = zfp_field_dimensionality(field);
-  uint mx = (MAX(field->nx, 1u) + 3) / 4;
-  uint my = (MAX(field->ny, 1u) + 3) / 4;
-  uint mz = (MAX(field->nz, 1u) + 3) / 4;
-  uint mw = (MAX(field->nw, 1u) + 3) / 4;
-  size_t blocks = (size_t)mx * (size_t)my * (size_t)mz * (size_t)mw;
   uint values = 1u << (2 * dims);
-  uint maxbits = 1;
-
+  uint maxbits = 0;
   if (!dims)
     return 0;
   switch (field->type) {
-    case zfp_type_none:
-      return 0;
+    case zfp_type_int32:
+      maxbits += reversible ? 5 : 0;
+      break;
+    case zfp_type_int64:
+      maxbits += reversible ? 6 : 0;
+      break;
     case zfp_type_float:
-      maxbits += 8;
-      if (is_reversible(zfp))
-        maxbits += 5;
+      maxbits += reversible ? 1 + 1 + 8 + 5 : 1 + 8;
       break;
     case zfp_type_double:
-      maxbits += 11;
-      if (is_reversible(zfp))
-        maxbits += 6;
+      maxbits += reversible ? 1 + 1 + 11 + 6 : 1 + 11;
       break;
     default:
-      break;
+      return 0;
   }
   maxbits += values - 1 + values * MIN(zfp->maxprec, type_precision(field->type));
+
+  return maxbits;
+}
+
+size_t
+zfp_stream_maximum_size(const zfp_stream* zfp, const zfp_field* field)
+{
+  uint maxbits = zfp_block_maxbits (zfp, field);
+  if (!maxbits)
+    return 0;
+  size_t blocks = zfp_field_num_blocks (field);
+
   maxbits = MIN(maxbits, zfp->maxbits);
   maxbits = MAX(maxbits, zfp->minbits);
   return ((ZFP_HEADER_MAX_BITS + blocks * maxbits + stream_word_bits - 1) & ~(stream_word_bits - 1)) / CHAR_BIT;
@@ -644,7 +710,7 @@ zfp_stream_set_reversible(zfp_stream* zfp)
 }
 
 double
-zfp_stream_set_rate(zfp_stream* zfp, double rate, zfp_type type, uint dims, int wra)
+zfp_stream_set_rate(zfp_stream* zfp, double rate, zfp_type type, uint dims, zfp_bool align)
 {
   uint n = 1u << (2 * dims);
   uint bits = (uint)floor(n * rate + 0.5);
@@ -658,7 +724,7 @@ zfp_stream_set_rate(zfp_stream* zfp, double rate, zfp_type type, uint dims, int 
     default:
       break;
   }
-  if (wra) {
+  if (align) {
     /* for write random access, round up to next multiple of stream word size */
     bits += (uint)stream_word_bits - 1;
     bits &= ~(stream_word_bits - 1);
@@ -730,15 +796,15 @@ zfp_stream_set_mode(zfp_stream* zfp, uint64 mode)
       minbits = ZFP_MIN_BITS;
       maxbits = ZFP_MAX_BITS;
       maxprec = ZFP_MAX_PREC;
-      minexp = (uint)mode + ZFP_MIN_EXP - (2048 + 128 + 1);
+      minexp = (int)mode + ZFP_MIN_EXP - (2048 + 128 + 1);
     }
   }
   else {
     /* 64-bit encoding */
-    mode >>= 12; minbits = ((uint)mode & 0x7fffu) + 1;
-    mode >>= 15; maxbits = ((uint)mode & 0x7fffu) + 1;
-    mode >>= 15; maxprec = ((uint)mode & 0x007fu) + 1;
-    mode >>=  7; minexp  = ((uint)mode & 0x7fffu) - 16495;
+    mode >>= 12; minbits = (uint)(mode & 0x7fffu) + 1;
+    mode >>= 15; maxbits = (uint)(mode & 0x7fffu) + 1;
+    mode >>= 15; maxprec = (uint)(mode & 0x007fu) + 1;
+    mode >>=  7; minexp  = (int)(mode & 0x7fffu) - 16495;
   }
 
   if (!zfp_stream_set_params(zfp, minbits, maxbits, maxprec, minexp))
@@ -747,53 +813,16 @@ zfp_stream_set_mode(zfp_stream* zfp, uint64 mode)
   return zfp_stream_compression_mode(zfp);
 }
 
-int
+zfp_bool
 zfp_stream_set_params(zfp_stream* zfp, uint minbits, uint maxbits, uint maxprec, int minexp)
 {
   if (minbits > maxbits || !(0 < maxprec && maxprec <= 64))
-    return 0;
+    return zfp_false;
   zfp->minbits = minbits;
   zfp->maxbits = maxbits;
   zfp->maxprec = maxprec;
   zfp->minexp = minexp;
-  return 1;
-}
-
-void
-zfp_stream_set_index(zfp_stream* zfp, zfp_index* index)
-{
-  zfp->index = index;
-}
-
-zfp_index*
-zfp_index_create()
-{
-  zfp_index* index = (zfp_index*)malloc(sizeof(zfp_index));
-  if (index) {
-    index->type = zfp_index_none;
-    index->data = NULL;
-    index->size = 0;
-  }
-  return index;
-}
-
-void
-zfp_index_set_type(zfp_index* index, zfp_index_type type)
-{
-  index->type = type;
-}
-
-void
-zfp_index_set_data(zfp_index* index, void* data, size_t size)
-{
-  index->data = data;
-  index->size = size;
-}
-
-void
-zfp_index_free(zfp_index* index)
-{
-  free(index);
+  return zfp_true;
 }
 
 size_t
@@ -834,7 +863,7 @@ zfp_stream_omp_chunk_size(const zfp_stream* zfp)
   return zfp->exec.params.omp.chunk_size;
 }
 
-int
+zfp_bool
 zfp_stream_set_execution(zfp_stream* zfp, zfp_exec_policy policy)
 {
   switch (policy) {
@@ -842,6 +871,11 @@ zfp_stream_set_execution(zfp_stream* zfp, zfp_exec_policy policy)
       break;
 #ifdef ZFP_WITH_CUDA
     case zfp_exec_cuda:
+      break;
+#endif
+#ifdef ZFP_WITH_HIP
+    case zfp_exec_hip:
+      warmup_gpu();
       break;
 #endif
     case zfp_exec_omp:
@@ -852,31 +886,31 @@ zfp_stream_set_execution(zfp_stream* zfp, zfp_exec_policy policy)
       }
       break;
 #else
-      return 0;
+      return zfp_false;
 #endif
     default:
-      return 0;
+      return zfp_false;
   }
   zfp->exec.policy = policy;
-  return 1;
+  return zfp_true;
 }
 
-int
+zfp_bool
 zfp_stream_set_omp_threads(zfp_stream* zfp, uint threads)
 {
   if (!zfp_stream_set_execution(zfp, zfp_exec_omp))
-    return 0;
+    return zfp_false;
   zfp->exec.params.omp.threads = threads;
-  return 1;
+  return zfp_true;
 }
 
-int
+zfp_bool
 zfp_stream_set_omp_chunk_size(zfp_stream* zfp, uint chunk_size)
 {
   if (!zfp_stream_set_execution(zfp, zfp_exec_omp))
-    return 0;
+    return zfp_false;
   zfp->exec.params.omp.chunk_size = chunk_size;
-  return 1;
+  return zfp_true;
 }
 
 /* public functions: utility functions --------------------------------------*/
@@ -958,11 +992,8 @@ zfp_demote_int32_to_uint16(uint16* oblock, const int32* iblock, uint dims)
 size_t
 zfp_compress(zfp_stream* zfp, const zfp_field* field)
 {
-#if defined (WITH_IPP_AVX2)
-  ippSetCpuFeatures(CPU_AVX2);
-#endif
   /* function table [execution][strided][dimensionality][scalar type] */
-  void (*ftable[3][2][4][4])(zfp_stream*, const zfp_field*) = {
+  void (*ftable[4][2][4][4])(zfp_stream*, const zfp_field*) = {
     /* serial */
     {{{ compress_int32_1,         compress_int64_1,         compress_float_1,         compress_double_1 },
       { compress_strided_int32_2, compress_strided_int64_2, compress_strided_float_2, compress_strided_double_2 },
@@ -1000,18 +1031,25 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
 #else
     {{{ NULL }}},
 #endif
+    /* HIP */
+#ifdef ZFP_WITH_HIP
+    {{{ compress_hip_int32_1,         compress_hip_int64_1,         compress_hip_float_1,         compress_hip_double_1 },
+      { compress_strided_hip_int32_2, compress_strided_hip_int64_2, compress_strided_hip_float_2, compress_strided_hip_double_2 },
+      { compress_strided_hip_int32_3, compress_strided_hip_int64_3, compress_strided_hip_float_3, compress_strided_hip_double_3 },
+      { NULL,                            NULL,                            NULL,                            NULL }},
+     {{ compress_strided_hip_int32_1, compress_strided_hip_int64_1, compress_strided_hip_float_1, compress_strided_hip_double_1 },
+      { compress_strided_hip_int32_2, compress_strided_hip_int64_2, compress_strided_hip_float_2, compress_strided_hip_double_2 },
+      { compress_strided_hip_int32_3, compress_strided_hip_int64_3, compress_strided_hip_float_3, compress_strided_hip_double_3 },
+      { NULL,                            NULL,                            NULL,                            NULL }}},
+#else
+    {{{ NULL }}},
+#endif
   };
   uint exec = zfp->exec.policy;
   uint strided = zfp_field_stride(field, NULL);
   uint dims = zfp_field_dimensionality(field);
   uint type = field->type;
   void (*compress)(zfp_stream*, const zfp_field*);
-  size_t blocks;
-  size_t index_size = 0;
-  void* index_data = NULL;
-  void* length_table = NULL;
-  zfp_index_type idx_type = zfp_index_none;
-  int i;
 
   switch (type) {
     case zfp_type_int32:
@@ -1023,81 +1061,23 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
       return 0;
   }
 
-  /* allocate buffer for length table */
-  if (zfp->index != NULL) {
-    idx_type = zfp->index->type;
-    uint mx = (MAX(field->nx, 1u) + 3) / 4;
-    uint my = (MAX(field->ny, 1u) + 3) / 4;
-    uint mz = (MAX(field->nz, 1u) + 3) / 4;
-    uint mw = (MAX(field->nw, 1u) + 3) / 4;
-    blocks = (size_t)mx * (size_t)my * (size_t)mz * (size_t)mw;
-    index_size = blocks * sizeof(uint16);
-    length_table = malloc(index_size);
-    zfp_index_set_data(zfp->index, length_table, index_size);
-  }
-
   /* return 0 if compression mode is not supported */
   compress = ftable[exec][strided][dims - 1][type - zfp_type_int32];
-  if (!compress) {
+  if (!compress)
     return 0;
-  }
 
   /* compress field and align bit stream on word boundary */
   compress(zfp, field);
   stream_flush(zfp->stream);
 
-  /* encode index - calling a separate encoding function might be better */
-  if (zfp->index != NULL) {
-    uint16* index16 = NULL;
-    uint64* index64 = NULL;
-    uint16* length16 = (uint16*) length_table;
-    switch (idx_type) {
-      /* convert from length table to length index with header */
-      case zfp_index_length: 
-        index_size = sizeof(uint64) + blocks * sizeof(uint16); // add size for header
-        index_data = malloc(index_size);
-        index64 = (uint64*)index_data;
-        index16 = (uint16*)index_data;
-        index64[0] = 2; // encode the header to indicate lengths
-        for (i=0; i < blocks; i++) {
-          index16[i+4] = length16[i]; // copy data from length table to index data
-        }
-        break;
-      /* default option is offset table, fallthrough to offset */
-      case zfp_index_none:
-      /* convert from length table to offset index with header */
-      case zfp_index_offset: 
-        index_size = (blocks + 1) * sizeof(uint64);
-        index_data = malloc(index_size);
-        index64 = (uint64*)index_data;
-        index64[0] = 1; // encode the header to indicate offsets
-        uint64 sum = 0;
-        for (i = 0; i < blocks; i++) {
-          index64[i+1] = sum;
-          sum += (uint64)length16[i];
-        }
-        break;
-      /* unrecognized type, return no index data */
-      default: 
-        index_data = NULL;
-        index_size = 0;
-        break;
-    }
-    /* set the encoded index size and data in the stream */
-    zfp_index_set_data(zfp->index, index_data, index_size); 
-    free(length_table);
-  }
   return stream_size(zfp->stream);
 }
 
 size_t
 zfp_decompress(zfp_stream* zfp, zfp_field* field)
 {
-#if defined (WITH_IPP_AVX2)
-  ippSetCpuFeatures(CPU_AVX2);
-#endif
   /* function table [execution][strided][dimensionality][scalar type] */
-  void (*ftable[3][2][4][4])(zfp_stream*, zfp_field*) = {
+  void (*ftable[4][2][4][4])(zfp_stream*, zfp_field*) = {
     /* serial */
     {{{ decompress_int32_1,         decompress_int64_1,         decompress_float_1,         decompress_double_1 },
       { decompress_strided_int32_2, decompress_strided_int64_2, decompress_strided_float_2, decompress_strided_double_2 },
@@ -1108,19 +1088,8 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
       { decompress_strided_int32_3, decompress_strided_int64_3, decompress_strided_float_3, decompress_strided_double_3 },
       { decompress_strided_int32_4, decompress_strided_int64_4, decompress_strided_float_4, decompress_strided_double_4 }}},
 
-    /* OpenMP */
-#ifdef _OPENMP
-    {{{ decompress_omp_int32_1,         decompress_omp_int64_1,         decompress_omp_float_1,         decompress_omp_double_1 },
-      { decompress_strided_omp_int32_2, decompress_strided_omp_int64_2, decompress_strided_omp_float_2, decompress_strided_omp_double_2 },
-      { decompress_strided_omp_int32_3, decompress_strided_omp_int64_3, decompress_strided_omp_float_3, decompress_strided_omp_double_3 },
-      { decompress_strided_omp_int32_4, decompress_strided_omp_int64_4, decompress_strided_omp_float_4, decompress_strided_omp_double_4 }},
-     {{ decompress_strided_omp_int32_1, decompress_strided_omp_int64_1, decompress_strided_omp_float_1, decompress_strided_omp_double_1 },
-      { decompress_strided_omp_int32_2, decompress_strided_omp_int64_2, decompress_strided_omp_float_2, decompress_strided_omp_double_2 },
-      { decompress_strided_omp_int32_3, decompress_strided_omp_int64_3, decompress_strided_omp_float_3, decompress_strided_omp_double_3 },
-      { decompress_strided_omp_int32_4, decompress_strided_omp_int64_4, decompress_strided_omp_float_4, decompress_strided_omp_double_4 }}},
-#else
-     {{{ NULL }}},
-#endif
+    /* OpenMP; not yet supported */
+    {{{ NULL }}},
 
     /* CUDA */
 #ifdef ZFP_WITH_CUDA
@@ -1135,15 +1104,25 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
 #else
     {{{ NULL }}},
 #endif
+
+#ifdef ZFP_WITH_HIP
+    {{{ decompress_hip_int32_1,         decompress_hip_int64_1,         decompress_hip_float_1,         decompress_hip_double_1 },
+      { decompress_strided_hip_int32_2, decompress_strided_hip_int64_2, decompress_strided_hip_float_2, decompress_strided_hip_double_2 },
+      { decompress_strided_hip_int32_3, decompress_strided_hip_int64_3, decompress_strided_hip_float_3, decompress_strided_hip_double_3 },
+      { NULL,                            NULL,                            NULL,                            NULL }},
+     {{ decompress_strided_hip_int32_1, decompress_strided_hip_int64_1, decompress_strided_hip_float_1, decompress_strided_hip_double_1 },
+      { decompress_strided_hip_int32_2, decompress_strided_hip_int64_2, decompress_strided_hip_float_2, decompress_strided_hip_double_2 },
+      { decompress_strided_hip_int32_3, decompress_strided_hip_int64_3, decompress_strided_hip_float_3, decompress_strided_hip_double_3 },
+      { NULL,                            NULL,                            NULL,                            NULL }}},
+#else
+    {{{ NULL }}},
+#endif
   };
   uint exec = zfp->exec.policy;
   uint strided = zfp_field_stride(field, NULL);
   uint dims = zfp_field_dimensionality(field);
   uint type = field->type;
   void (*decompress)(zfp_stream*, zfp_field*);
-  zfp_mode mode = zfp_stream_compression_mode(zfp);
-  uint64* index64 = NULL;
-  uint64 index_type = 0;
 
   switch (type) {
     case zfp_type_int32:
@@ -1152,31 +1131,6 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
     case zfp_type_double:
       break;
     default:
-      return 0;
-  }
-
-  /* check if index for parallel decompression is needed and present
-  TODO: Add CUDA support later */
-  if (exec == zfp_exec_omp && ((mode == zfp_mode_fixed_accuracy) ^ (mode == zfp_mode_fixed_precision))) {
-    if (zfp->index != NULL){
-      if (zfp->index->data != NULL) {
-        index64 = (uint64*)zfp->index->data;
-        index_type = index64[0];
-        /* TODO: Extend this to convert/support multiple index types */
-        if (index_type == 1) {
-          /* TODO: decide how to store the decoded header information in the index struct */
-          /* Shift the index data pointer to skip the header when decompressing */
-          index64 += 1;
-          zfp->index->data = (void*)(index64);
-          zfp->index->type = zfp_index_offset;
-        }
-        else
-          return 0;
-      }
-      else
-        return 0;
-    }
-    else
       return 0;
   }
 

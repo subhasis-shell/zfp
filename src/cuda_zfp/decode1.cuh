@@ -113,7 +113,7 @@ size_t decode1launch(uint dim,
   cudaEventRecord(start);
 #endif
 
-  cudaDecode1<Scalar> << < grid_size, block_size >> >
+  cudaDecode1<Scalar> <<< grid_size, block_size >>>
     (stream,
 		 d_data,
      dim,
