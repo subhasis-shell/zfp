@@ -12,6 +12,15 @@
 #include "zfp/version.h"
 #include "bitstream.h"
 
+/* HIP runtime for enabling hip specific calls */
+
+#ifdef ZFP_WITH_HIP
+
+#include <hip/hip_runtime.h>
+#include "hiperror_macro.h"
+
+#endif
+
 /* macros ------------------------------------------------------------------ */
 
 /* default compression parameters */
@@ -106,6 +115,11 @@ typedef struct {
   uint nx, ny, nz, nw; /* sizes (zero for unused dimensions) */
   int sx, sy, sz, sw;  /* strides (zero for contiguous array a[nw][nz][ny][nx]) */
   void* data;          /* pointer to array data */
+
+#ifdef ZFP_WITH_HIP
+  hipStream_t hipstream;
+#endif
+
 } zfp_field;
 
 #ifdef __cplusplus

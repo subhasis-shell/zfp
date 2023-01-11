@@ -106,11 +106,12 @@ hipDecode3(Word *blocks,
   }
 }
 template<class Scalar>
-size_t decode3launch(uint3 dims, 
+size_t decode3launchstream(uint3 dims, 
                      int3 stride,
                      Word *stream,
                      Scalar *d_data,
-                     uint maxbits)
+                     uint maxbits,
+                     hipStream_t hipstream)
 {
   const int hip_block_size = 128;
   dim3 block_size;
@@ -150,7 +151,7 @@ size_t decode3launch(uint3 dims,
   hipEventRecord(start);
 #endif
 
-  hipDecode3<Scalar, 64> <<< grid_size, block_size >>>
+  hipDecode3<Scalar, 64> <<< grid_size, block_size, 0, hipstream >>>
     (stream,
 		 d_data,
      dims,
@@ -159,9 +160,9 @@ size_t decode3launch(uint3 dims,
      maxbits);
 
 #ifdef HIP_ZFP_RATE_PRINT
-  hipEventRecord(stop);
+  hipEventRecord(stop, hipstream);
   hipEventSynchronize(stop);
-	hipStreamSynchronize(0);
+	hipStreamSynchronize(hipstream);
 
   float miliseconds = 0;
   hipEventElapsedTime(&miliseconds, start, stop);
@@ -178,13 +179,14 @@ size_t decode3launch(uint3 dims,
 }
 
 template<class Scalar>
-size_t decode3(uint3 dims, 
+size_t decode3stream(uint3 dims, 
                int3 stride,
                Word  *stream,
                Scalar *d_data,
-               uint maxbits)
+               uint maxbits,
+               hipStream_t hipstream)
 {
-	return decode3launch<Scalar>(dims, stride, stream, d_data, maxbits);
+	return decode3launchstream<Scalar>(dims, stride, stream, d_data, maxbits, hipstream);
 }
 
 } // namespace hipZFP

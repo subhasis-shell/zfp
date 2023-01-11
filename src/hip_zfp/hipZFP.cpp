@@ -111,8 +111,9 @@ bool is_contigous(const uint dims[3], const int3 &stride, long long int &offset)
 // encode expects device pointers
 //
 template <typename T, bool variable_rate>
-size_t encode(uint dims[3], int3 stride, int minbits, int maxbits,
-              int maxprec, int minexp, T *d_data, Word *d_stream, ushort *d_bitlengths)
+size_t encodestream(uint dims[3], int3 stride, int minbits, int maxbits,
+              int maxprec, int minexp, T *d_data, Word *d_stream, ushort *d_bitlengths, 
+              cudaStream_t hipstream)
 {
 
   int d = 0;
@@ -132,8 +133,8 @@ size_t encode(uint dims[3], int3 stride, int minbits, int maxbits,
   {
     int dim = dims[0];
     int sx = stride.x;
-    stream_size = hipZFP::encode1<T, variable_rate>(dim, sx, d_data, d_stream, d_bitlengths,
-                                                    minbits, maxbits, maxprec, minexp);
+    stream_size = hipZFP::encode1stream<T, variable_rate>(dim, sx, d_data, d_stream, d_bitlengths,
+                                                    minbits, maxbits, maxprec, minexp, hipstream);
   }
   else if(d == 2)
   {
@@ -141,8 +142,8 @@ size_t encode(uint dims[3], int3 stride, int minbits, int maxbits,
     int2 s;
     s.x = stride.x;
     s.y = stride.y;
-    stream_size = hipZFP::encode2<T, variable_rate>(ndims, s, d_data, d_stream, d_bitlengths,
-                                                    minbits, maxbits, maxprec, minexp);
+    stream_size = hipZFP::encode2stream<T, variable_rate>(ndims, s, d_data, d_stream, d_bitlengths,
+                                                    minbits, maxbits, maxprec, minexp, hipstream);
   }
   else if(d == 3)
   {
@@ -151,8 +152,8 @@ size_t encode(uint dims[3], int3 stride, int minbits, int maxbits,
     s.y = stride.y;
     s.z = stride.z;
     uint3 ndims = make_uint3(dims[0], dims[1], dims[2]);
-    stream_size = hipZFP::encode<T, variable_rate>(ndims, s, d_data, d_stream, d_bitlengths,
-                                                  minbits, maxbits, maxprec, minexp);
+    stream_size = hipZFP::encode3stream<T, variable_rate>(ndims, s, d_data, d_stream, d_bitlengths,
+                                                  minbits, maxbits, maxprec, minexp, hipstream);
   }
 
   errors.chk("Encode");
@@ -161,7 +162,7 @@ size_t encode(uint dims[3], int3 stride, int minbits, int maxbits,
 }
 
 template<typename T>
-size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *out)
+size_t decodestream(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *out, hipStream_t hipstream)
 {
 
   int d = 0;
@@ -185,14 +186,14 @@ size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *o
     s.y = stride.y;
     s.z = stride.z;
 
-    stream_bytes = hipZFP::decode3<T>(dims, s, stream, out, bits_per_block);
+    stream_bytes = hipZFP::decode3stream<T>(dims, s, stream, out, bits_per_block, hipstream);
   }
   else if(d == 1)
   {
     uint dim = ndims[0];
     int sx = stride.x;
 
-    stream_bytes = hipZFP::decode1<T>(dim, sx, stream, out, bits_per_block);
+    stream_bytes = hipZFP::decode1stream<T>(dim, sx, stream, out, bits_per_block, hipstream);
 
 
   }
@@ -206,7 +207,7 @@ size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *o
     s.x = stride.x;
     s.y = stride.y;
 
-    stream_bytes = hipZFP::decode2<T>(dims, s, stream, out, bits_per_block);
+    stream_bytes = hipZFP::decode2stream<T>(dims, s, stream, out, bits_per_block, hipstream);
   }
   else std::cerr<<" d ==  "<<d<<" not implemented\n";
   return stream_bytes;
@@ -533,41 +534,41 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
   {
     float* data = (float*) d_data;
     if (variable_rate)
-      stream_bytes = internal::encode<float, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                   stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<float, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                   stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
     else
-      stream_bytes = internal::encode<float, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                    stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<float, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                    stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
   }
   else if(field->type == zfp_type_double)
   {
     double* data = (double*) d_data;
     if (variable_rate)
-      stream_bytes = internal::encode<double, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                    stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<double, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                    stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
     else
-      stream_bytes = internal::encode<double, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                     stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<double, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                     stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
   }
   else if(field->type == zfp_type_int32)
   {
     int * data = (int*) d_data;
     if (variable_rate)
-      stream_bytes = internal::encode<int, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                 stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<int, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                 stream->maxprec, stream->minexp, data, d_stream, d_bitlengths. gpuStream);
     else
-      stream_bytes = internal::encode<int, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                  stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<int, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                  stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
   }
   else if(field->type == zfp_type_int64)
   {
     long long int * data = (long long int*) d_data;
     if (variable_rate)
-      stream_bytes = internal::encode<long long int, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                           stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<long long int, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                           stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
     else
-      stream_bytes = internal::encode<long long int, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                            stream->maxprec, stream->minexp, data, d_stream, d_bitlengths);
+      stream_bytes = internal::encodestream<long long int, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
+                                                            stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
   }
 
   if (variable_rate)
@@ -661,25 +662,25 @@ hip_decompress(zfp_stream *stream, zfp_field *field)
   if(field->type == zfp_type_float)
   {
     float *data = (float*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, data, gpuStream);
     d_data = (void*) data;
   }
   else if(field->type == zfp_type_double)
   {
     double *data = (double*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, data, gpuStream);
     d_data = (void*) data;
   }
   else if(field->type == zfp_type_int32)
   {
     int *data = (int*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, data, gpuStream);
     d_data = (void*) data;
   }
   else if(field->type == zfp_type_int64)
   {
     long long int *data = (long long int*) d_data;
-    decoded_bytes = internal::decode(dims, stride, (int)stream->maxbits, d_stream, data);
+    decoded_bytes = internal::decodestream(dims, stride, (int)stream->maxbits, d_stream, data, gpuStream);
     d_data = (void*) data;
   }
   else
