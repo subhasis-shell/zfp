@@ -99,7 +99,7 @@ hipEncode1(const int minbits,
 //
 template<class Scalar, bool variable_rate>
 
-size_t encode1launch(uint dim, 
+size_t encode1launchstream(uint dim, 
                      int sx,
                      const Scalar *d_data,
                      Word *stream,
@@ -107,7 +107,8 @@ size_t encode1launch(uint dim,
                      const int minbits,
                      const int maxbits,
                      const int maxprec,
-                     const int minexp)
+                     const int minexp,
+                     hipStream_t hipstream)
 {
   const int hip_block_size = 128;
   dim3 block_size = dim3(hip_block_size, 1, 1);
@@ -143,7 +144,7 @@ size_t encode1launch(uint dim,
   hipEventRecord(start);
 #endif
 
-  hipEncode1<Scalar, variable_rate> <<<grid_size, block_size>>>
+  hipEncode1<Scalar, variable_rate> <<<grid_size, block_size, 0, hipstream>>>
     (minbits,
      maxbits,
      maxprec,
@@ -157,9 +158,9 @@ size_t encode1launch(uint dim,
      zfp_blocks);
 
 #ifdef HIP_ZFP_RATE_PRINT
-  hipEventRecord(stop);
+  hipEventRecord(stop, hipstream);
   hipEventSynchronize(stop);
-  hipStreamSynchronize(0);
+  hipStreamSynchronize(hipstream);
 
   float miliseconds = 0.f;
   hipEventElapsedTime(&miliseconds, start, stop);
@@ -176,7 +177,7 @@ size_t encode1launch(uint dim,
 // Encode a host vector and output a encoded device vector
 //
 template<class Scalar, bool variable_rate>
-size_t encode1(int dim,
+size_t encode1stream(int dim,
                int sx,
                Scalar *d_data,
                Word *stream,
@@ -184,10 +185,11 @@ size_t encode1(int dim,
                const int minbits,
                const int maxbits,
                const int maxprec,
-               const int minexp)
+               const int minexp,
+               hipStream_t hipstream)
 {
-  return encode1launch<Scalar, variable_rate>(dim, sx, d_data, stream, d_block_bits,
-                                              minbits, maxbits, maxprec, minexp);
+  return encode1launchstream<Scalar, variable_rate>(dim, sx, d_data, stream, d_block_bits,
+                                              minbits, maxbits, maxprec, minexp, hipstream);
 }
 
 }

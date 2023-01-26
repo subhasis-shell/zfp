@@ -113,7 +113,7 @@ bool is_contigous(const uint dims[3], const int3 &stride, long long int &offset)
 template <typename T, bool variable_rate>
 size_t encodestream(uint dims[3], int3 stride, int minbits, int maxbits,
               int maxprec, int minexp, T *d_data, Word *d_stream, ushort *d_bitlengths, 
-              cudaStream_t hipstream)
+              hipStream_t hipstream)
 {
 
   int d = 0;
@@ -495,6 +495,10 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
     return 0;
   }
 
+  // Assigning stream from field
+  hipStream_t gpuStream;
+  gpuStream = field->hipstream;
+
   uint dims[3];
   dims[0] = field->nx;
   dims[1] = field->ny;
@@ -555,7 +559,7 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
     int * data = (int*) d_data;
     if (variable_rate)
       stream_bytes = internal::encodestream<int, true>(dims, stride, stream->minbits, (int)buffer_maxbits,
-                                                 stream->maxprec, stream->minexp, data, d_stream, d_bitlengths. gpuStream);
+                                                 stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
     else
       stream_bytes = internal::encodestream<int, false>(dims, stride, stream->minbits, (int)buffer_maxbits,
                                                   stream->maxprec, stream->minexp, data, d_stream, d_bitlengths, gpuStream);
@@ -636,6 +640,11 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
 void
 hip_decompress(zfp_stream *stream, zfp_field *field)
 {
+
+  // Assigning stream from field
+  hipStream_t gpuStream;
+  gpuStream = field->hipstream;
+
   uint dims[3];
   dims[0] = field->nx;
   dims[1] = field->ny;

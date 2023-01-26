@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <hip/hip_runtime.h>
+#include <hip/hip_common.h>
 
 /* HIP specific canonical error checking */
 

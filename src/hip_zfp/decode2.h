@@ -170,7 +170,7 @@ size_t decode2stream(uint2 dims,
                Word *stream,
                Scalar *d_data,
                uint maxbits,
-               hitStream_t hipstream)
+               hipStream_t hipstream)
 {
 	return decode2launchstream<Scalar>(dims, stride, stream, d_data, maxbits, hipstream);
 }

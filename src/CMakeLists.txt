@@ -19,6 +19,8 @@ if(ZFP_WITH_HIP)
   endif()
   set(HIPZFP_SOURCE hip_zfp/hipZFP.cpp)
   set_source_files_properties(${HIPZFP_SOURCE} PROPERTIES LANGUAGE HIP)
+  SET(CMAKE_C_FLAGS "-D__HIP_PLATFORM_AMD__")
+  SET(CMAKE_CXX_FLAGS "-D__HIP_PLATFORM_AMD__")
 endif()
 
 set(zfp_source

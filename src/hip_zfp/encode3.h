@@ -119,7 +119,7 @@ hipEncode(const uint minbits,
 // Launch the encode kernel
 //
 template<class Scalar, bool variable_rate>
-size_t encode3launch(uint3 dims, 
+size_t encode3launchstream(uint3 dims, 
                      int3 stride,
                      const Scalar *d_data,
                      Word *stream,
@@ -127,7 +127,8 @@ size_t encode3launch(uint3 dims,
                      const int minbits,
                      const int maxbits,
                      const int maxprec,
-                     const int minexp)
+                     const int minexp,
+                     hipStream_t hipstream)
 {
 
   const int hip_block_size = 128;
@@ -165,7 +166,7 @@ size_t encode3launch(uint3 dims,
   hipEventRecord(start);
 #endif
 
-  hipEncode<Scalar, variable_rate> <<<grid_size, block_size>>>
+  hipEncode<Scalar, variable_rate> <<<grid_size, block_size, 0, hipstream>>>
     (minbits,
      maxbits,
      maxprec,
@@ -179,9 +180,9 @@ size_t encode3launch(uint3 dims,
      zfp_blocks);
 
 #ifdef HIP_ZFP_RATE_PRINT
-  hipEventRecord(stop);
+  hipEventRecord(stop, hipstream);
   hipEventSynchronize(stop);
-  hipStreamSynchronize(0);
+  hipStreamSynchronize(hipstream);
 
   float miliseconds = 0;
   hipEventElapsedTime(&miliseconds, start, stop);
@@ -200,7 +201,7 @@ size_t encode3launch(uint3 dims,
 // Just pass the raw pointer to the "real" encode
 //
 template<class Scalar, bool variable_rate>
-size_t encode(uint3 dims, 
+size_t encode3stream(uint3 dims, 
               int3 stride,
               Scalar *d_data,
               Word *stream,
@@ -208,10 +209,11 @@ size_t encode(uint3 dims,
               const int minbits,
               const int maxbits,
               const int maxprec,
-              const int minexp)
+              const int minexp,
+              hipStream_t hipstream)
 {
-  return encode3launch<Scalar, variable_rate>(dims, stride, d_data, stream, d_block_bits,
-                                              minbits, maxbits, maxprec, minexp);
+  return encode3launchstream<Scalar, variable_rate>(dims, stride, d_data, stream, d_block_bits,
+                                              minbits, maxbits, maxprec, minexp, hipstream);
 }
 }
 #endif

@@ -111,7 +111,7 @@ hipEncode2(const int minbits,
 // Launch the encode kernel
 //
 template<class Scalar, bool variable_rate>
-size_t encode2launch(uint2 dims, 
+size_t encode2launchstream(uint2 dims, 
                      int2 stride,
                      const Scalar *d_data,
                      Word *stream,
@@ -119,7 +119,8 @@ size_t encode2launch(uint2 dims,
                      const int minbits,
                      const int maxbits,
                      const int maxprec,
-                     const int minexp)
+                     const int minexp,
+                     hipStream_t hipstream)
 {
   const int hip_block_size = 128;
   dim3 block_size = dim3(hip_block_size, 1, 1);
@@ -156,7 +157,7 @@ size_t encode2launch(uint2 dims,
   hipEventRecord(start);
 #endif
 
-  hipEncode2<Scalar, variable_rate> <<<grid_size, block_size>>>
+  hipEncode2<Scalar, variable_rate> <<<grid_size, block_size, 0, hipstream>>>
     (minbits,
      maxbits,
      maxprec,
@@ -171,9 +172,9 @@ size_t encode2launch(uint2 dims,
 
 #ifdef HIP_ZFP_RATE_PRINT
   hipDeviceSynchronize();
-  hipEventRecord(stop);
+  hipEventRecord(stop, hipstream);
   hipEventSynchronize(stop);
-  hipStreamSynchronize(0);
+  hipStreamSynchronize(hipstream);
 
   float miliseconds = 0.f;
   hipEventElapsedTime(&miliseconds, start, stop);
@@ -187,7 +188,7 @@ size_t encode2launch(uint2 dims,
 }
 
 template<class Scalar, bool variable_rate>
-size_t encode2(uint2 dims,
+size_t encode2stream(uint2 dims,
                int2 stride,
                Scalar *d_data,
                Word *stream,
@@ -195,10 +196,11 @@ size_t encode2(uint2 dims,
                const int minbits,
                const int maxbits,
                const int maxprec,
-               const int minexp)
+               const int minexp,
+               hipStream_t hipstream)
 {
-  return encode2launch<Scalar, variable_rate>(dims, stride, d_data, stream, d_block_bits,
-                                              minbits, maxbits, maxprec, minexp);
+  return encode2launchstream<Scalar, variable_rate>(dims, stride, d_data, stream, d_block_bits,
+                                              minbits, maxbits, maxprec, minexp, hipstream);
 }
 }
 
