@@ -1,3 +1,6 @@
+SET(CMAKE_C_FLAGS "-D__HIP_PLATFORM_AMD__")
+SET(CMAKE_CXX_FLAGS "-D__HIP_PLATFORM_AMD__")
+
 add_executable(zfpcmd zfp.c)
 
 # protect against LNK1114: cannot overwrite the original file 'lib/Release/zfp.lib'; error code 32;
