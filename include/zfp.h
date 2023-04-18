@@ -14,9 +14,10 @@
 
 /* HIP runtime for enabling hip specific calls */
 
+#ifdef ZFP_WITH_HIP
 #include <hip/hip_runtime.h>
 #include "hiperror_macro.h"
-
+#endif
 
 /* macros ------------------------------------------------------------------ */
 
@@ -113,7 +114,9 @@ typedef struct {
   int sx, sy, sz, sw;  /* strides (zero for contiguous array a[nw][nz][ny][nx]) */
   void* data;          /* pointer to array data */
 
-  hipStream_t hipstream;
+#ifdef ZFP_WITH_HIP
+  hipStream_t hipStream;
+#endif
 
 } zfp_field;
 
@@ -521,6 +524,14 @@ zfp_field_set_metadata(
   zfp_field* field, /* field metadata */
   uint64 meta       /* compact 52-bit encoding of metadata */
 );
+
+
+/* Set HIP stream in case of strem execution */
+
+#ifdef ZFP_WITH_HIP
+void zfp_field_set_hip_stream(zfp_field* field, hipStream_t hipstream);
+#endif
+
 
 /* high-level API: compression and decompression --------------------------- */
 

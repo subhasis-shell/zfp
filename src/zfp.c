@@ -138,6 +138,11 @@ zfp_field_alloc()
     field->nx = field->ny = field->nz = field->nw = 0;
     field->sx = field->sy = field->sz = field->sw = 0;
     field->data = 0;
+
+#ifdef ZFP_WITH_HIP
+    field->hipStream = 0; /* set to default stream */
+#endif
+
   }
   return field;
 }
@@ -207,6 +212,14 @@ zfp_field_pointer(const zfp_field* field)
 {
   return field->data;
 }
+
+#ifdef ZFP_WITH_HIP
+void
+zfp_field_set_hip_stream(zfp_field* field, hipStream_t hipstream)
+{
+  field->hipStream = hipstream;
+}
+#endif
 
 void*
 zfp_field_begin(const zfp_field* field)

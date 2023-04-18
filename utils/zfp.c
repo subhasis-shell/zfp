@@ -375,7 +375,7 @@ int main(int argc, char* argv[])
   zfp = zfp_stream_open(NULL);
   field = zfp_field_alloc();
 
-  field->hipstream = 0;
+  field->hipStream = 0;
 
   /* read uncompressed or compressed file */
   if (inpath) {

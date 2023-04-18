@@ -9,6 +9,10 @@ if(NOT MSVC)
   set_property(TARGET zfpcmd PROPERTY OUTPUT_NAME zfp)
 endif()
 
+if(ZFP_WITH_HIP)
+   add_definitions(-DZFP_WITH_HIP)
+endif()
+
 target_link_libraries(zfpcmd zfp)
 if(HAVE_LIBM_MATH)
   target_link_libraries(zfpcmd m)

@@ -242,7 +242,7 @@ Word *setup_device_stream_compress(zfp_stream *stream,const zfp_field *field)
 
   Word *d_stream = NULL;
   size_t max_size = zfp_stream_maximum_size(stream, field);
-  hipMalloc(&d_stream, max_size);
+  hipMallocAsync(&d_stream, max_size, field->hipStream);
   return d_stream;
 }
 
@@ -269,8 +269,8 @@ Word *setup_device_stream_decompress(zfp_stream *stream,const zfp_field *field)
   Word *d_stream = NULL;
   //TODO: change maximum_size to compressed stream size
   size_t size = zfp_stream_maximum_size(stream, field);
-  hipMalloc(&d_stream, size);
-  hipMemcpy(d_stream, stream->stream->begin, size, hipMemcpyHostToDevice);
+  hipMallocAsync(&d_stream, size, field->hipStream);
+  hipMemcpyAsync(d_stream, stream->stream->begin, size, hipMemcpyHostToDevice, field->hipStream);
   return d_stream;
 }
 
@@ -344,8 +344,8 @@ void *setup_device_field_compress(const zfp_field *field, const int3 &stride, lo
       }
 #endif
     }
-    hipMalloc(&d_data, field_bytes);
-    hipMemcpy(d_data, host_ptr, field_bytes, hipMemcpyHostToDevice);
+    hipMallocAsync(&d_data, field_bytes, field->hipStream);
+    hipMemcpyAsync(d_data, host_ptr, field_bytes, hipMemcpyHostToDevice, field->hipStream);
   }
   return offset_void(field->type, d_data, -offset);
 }
@@ -393,7 +393,7 @@ void *setup_device_field_decompress(const zfp_field *field, const int3 &stride, 
       }
 #endif
     }
-    hipMalloc(&d_data, field_bytes);
+    hipMallocAsync(&d_data, field_bytes, field->hipStream);
   }
   return offset_void(field->type, d_data, -offset);
 }
@@ -409,7 +409,7 @@ ushort *setup_device_nbits_compress(zfp_stream *stream, const zfp_field *field, 
 
   ushort *d_bitlengths = NULL;
   size_t size = zfp_field_num_blocks(field) * sizeof(ushort);
-  hipMalloc(&d_bitlengths, size);
+  hipMallocAsync(&d_bitlengths, size, field->hipStream);
 	return d_bitlengths;
 }
 
@@ -423,8 +423,8 @@ ushort *setup_device_nbits_decompress(zfp_stream *stream, const zfp_field *field
 
   ushort *d_bitlengths = NULL;
   size_t size = zfp_field_num_blocks(field) * sizeof(ushort);
-  hipMalloc(&d_bitlengths, size);
-  hipMemcpy(d_bitlengths, stream->stream->bitlengths, size, hipMemcpyHostToDevice);
+  hipMallocAsync(&d_bitlengths, size, field->hipStream);
+  hipMemcpyAsync(d_bitlengths, stream->stream->bitlengths, size, hipMemcpyHostToDevice, field->hipStream);
   return d_bitlengths;
 }
 
@@ -439,12 +439,13 @@ void cleanup_device_nbits(zfp_stream *stream, const zfp_field *field,
 
   size_t size = zfp_field_num_blocks(field) * sizeof(ushort);
   if (copy)
-    hipMemcpy(stream->stream->bitlengths, d_bitlengths, size, hipMemcpyDeviceToHost);
-  hipFree(d_bitlengths);
+    hipMemcpyAsync(stream->stream->bitlengths, d_bitlengths, size, hipMemcpyDeviceToHost, field->hipStream);
+  
+  hipFreeAsync(d_bitlengths, field->hipStream);
 }
 
 void setup_device_chunking(int *chunk_size, unsigned long long **d_offsets, size_t *lcubtemp,
-                            void **d_cubtemp, int num_sm, int variable_rate)
+                            void **d_cubtemp, int num_sm, int variable_rate, hipStream_t hipstream)
 {
   if (!variable_rate)
     return;
@@ -454,16 +455,16 @@ void setup_device_chunking(int *chunk_size, unsigned long long **d_offsets, size
   // launching 1024 threads per SM should give a decent ochippancy
   *chunk_size = num_sm * 1024;
   size_t size = (*chunk_size + 1) * sizeof(unsigned long long);
-  hipMalloc(d_offsets, size);
-  hipMemset(*d_offsets, 0, size);
+  hipMallocAsync(d_offsets, size, hipstream);
+  hipMemsetAsync(*d_offsets, 0, size, hipstream);
   // Using HIP-CUB for the prefix sum. HIP-CUB needs a bit of temp memory too
   size_t tempsize;
   hipcub::DeviceScan::InclusiveSum(nullptr, tempsize, *d_offsets, *d_offsets, *chunk_size + 1);
   *lcubtemp = tempsize;
-  hipMalloc(d_cubtemp, tempsize);
+  hipMallocAsync(d_cubtemp, tempsize, hipstream);
 }
 
-void cleanup_device_ptr(void *orig_ptr, void *d_ptr, size_t bytes, long long int offset, zfp_type type)
+void cleanup_device_ptr(void *orig_ptr, void *d_ptr, size_t bytes, long long int offset, zfp_type type, hipStream_t hipstream)
 {
   bool device = hipZFP::is_gpu_ptr(orig_ptr);
   if(device)
@@ -476,10 +477,10 @@ void cleanup_device_ptr(void *orig_ptr, void *d_ptr, size_t bytes, long long int
 
   if(bytes > 0)
   {
-    hipMemcpy(h_offset_ptr, d_offset_ptr, bytes, hipMemcpyDeviceToHost);
+    hipMemcpyAsync(h_offset_ptr, d_offset_ptr, bytes, hipMemcpyDeviceToHost, hipstream);
   }
 
-  hipFree(d_offset_ptr);
+  hipFreeAsync(d_offset_ptr, hipstream);
 
 }
 
@@ -497,7 +498,7 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
 
   // Assigning stream from field
   hipStream_t gpuStream;
-  gpuStream = field->hipstream;
+  gpuStream = field->hipStream;
 
   uint dims[3];
   dims[0] = field->nx;
@@ -530,7 +531,7 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
   unsigned long long *d_offsets;
   size_t lcubtemp;
   void *d_cubtemp;
-  internal::setup_device_chunking(&chunk_size, &d_offsets, &lcubtemp, &d_cubtemp, num_sm, variable_rate);
+  internal::setup_device_chunking(&chunk_size, &d_offsets, &lcubtemp, &d_cubtemp, num_sm, variable_rate, gpuStream);
 
   uint buffer_maxbits = MIN (stream->maxbits, zfp_block_maxbits(stream, field));
 
@@ -597,12 +598,12 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
       hipZFP::chunk_process_launch((uint*)d_stream, d_offsets, i, cur_blocks, last_chunk, buffer_maxbits, num_sm);
     }
     // The total length in bits is now in the base of the prefix sum.
-    hipMemcpy (&stream_bytes, d_offsets, sizeof (unsigned long long), hipMemcpyDeviceToHost);
+    hipMemcpyAsync(&stream_bytes, d_offsets, sizeof (unsigned long long), hipMemcpyDeviceToHost, gpuStream);
     stream_bytes = (stream_bytes + 7) / 8;
   }
 
-  internal::cleanup_device_ptr(stream->stream->begin, d_stream, stream_bytes, 0, field->type);
-  internal::cleanup_device_ptr(field->data, d_data, 0, offset, field->type);
+  internal::cleanup_device_ptr(stream->stream->begin, d_stream, stream_bytes, 0, field->type, gpuStream);
+  internal::cleanup_device_ptr(field->data, d_data, 0, offset, field->type, gpuStream);
 
 #ifdef ZFP_HIP_HOST_REGISTER
   ErrorCheck errors;
@@ -621,10 +622,10 @@ hip_compress(zfp_stream *stream, const zfp_field *field, int variable_rate)
     if (stream->stream->bitlengths) // Saving the individual block lengths if a pointer exists
     {
       size_t size = zfp_field_num_blocks(field) * sizeof(ushort);
-      internal::cleanup_device_ptr(stream->stream->bitlengths, d_bitlengths, size, 0, zfp_type_none);
+      internal::cleanup_device_ptr(stream->stream->bitlengths, d_bitlengths, size, 0, zfp_type_none, gpuStream);
     }
-    internal::cleanup_device_ptr(NULL, d_offsets, 0, 0, zfp_type_none);
-    internal::cleanup_device_ptr(NULL, d_cubtemp, 0, 0, zfp_type_none);
+    internal::cleanup_device_ptr(NULL, d_offsets, 0, 0, zfp_type_none, gpuStream);
+    internal::cleanup_device_ptr(NULL, d_cubtemp, 0, 0, zfp_type_none, gpuStream);
   }
 
   // zfp wants to flush the stream.
@@ -643,7 +644,7 @@ hip_decompress(zfp_stream *stream, zfp_field *field)
 
   // Assigning stream from field
   hipStream_t gpuStream;
-  gpuStream = field->hipstream;
+  gpuStream = field->hipStream;
 
   uint dims[3];
   dims[0] = field->nx;
@@ -708,8 +709,8 @@ hip_decompress(zfp_stream *stream, zfp_field *field)
     }
   }
   size_t bytes = type_size * field_size;
-  internal::cleanup_device_ptr(stream->stream->begin, d_stream, 0, 0, field->type);
-  internal::cleanup_device_ptr(field->data, d_data, bytes, offset, field->type);
+  internal::cleanup_device_ptr(stream->stream->begin, d_stream, 0, 0, field->type, gpuStream);
+  internal::cleanup_device_ptr(field->data, d_data, bytes, offset, field->type, gpuStream);
 
 #ifdef ZFP_HIP_HOST_REGISTER
   ErrorCheck errors;
